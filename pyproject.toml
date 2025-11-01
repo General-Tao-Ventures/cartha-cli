@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cartha-cli"
+version = "0.1.0"
+description = "Cartha subnet CLI."
+authors = [{ name = "Cartha Contributors" }]
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "typer[all]>=0.12,<1",
+  "httpx>=0.25",
+  "bittensor>=8.3",
+]
+
+[project.scripts]
+cartha = "cartha_cli.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["cartha_cli"]
