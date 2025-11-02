@@ -1,10 +1,9 @@
 """Cartha CLI package."""
 
-from importlib.metadata import version, PackageNotFoundError
+def main() -> None:  # pragma: no cover
+    from .main import app
 
-try:
-    __version__ = version("cartha-cli")
-except PackageNotFoundError:  # pragma: no cover - during local dev
-    __version__ = "0.0.0"
+    app()
 
-__all__ = ["__version__"]
+
+__all__ = ["main"]

@@ -5,17 +5,29 @@ build-backend = "hatchling.build"
 [project]
 name = "cartha-cli"
 version = "0.1.0"
-description = "Cartha subnet CLI."
-authors = [{ name = "Cartha Contributors" }]
+description = "CLI utilities for Cartha subnet miners."
+readme = "README.md"
 requires-python = ">=3.11,<3.12"
+authors = [{ name = "Cartha Contributors" }]
 dependencies = [
-  "typer[all]>=0.12,<1",
-  "httpx>=0.25",
-  "bittensor>=8.3",
+  "typer[all]>=0.12",
+  "web3>=6.11,<7",
+  "eth-account>=0.10,<0.11",
+  "requests>=2.32",
+  "python-dotenv>=1.0",
+  "bittensor>=9.12.2",
+  "pydantic>=2.6,<3",
+  "fiber @ git+https://github.com/rayonlabs/fiber.git@7fe17fcabcfeccb081b7b2e150295132d441c557",
 ]
 
-[project.scripts]
-cartha = "cartha_cli.main:main"
+dynamic = ["entry-points"]
 
-[tool.hatch.build.targets.wheel]
-packages = ["cartha_cli"]
+[project.optional-dependencies]
+dev = ["pytest>=8.2", "ruff>=0.4", "mypy>=1.9"]
+
+[project.scripts]
+cartha = "cartha_cli:main"
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]

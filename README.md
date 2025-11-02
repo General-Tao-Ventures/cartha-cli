@@ -1,16 +1,19 @@
 # Cartha CLI
 
-Typer-based command line interface for Cartha miners and operators.
+Miner-facing command line tool for the Cartha subnet. The CLI wraps Bittensor wallet operations,
+subnet registration, verifier interactions, and signature helpers using Fiber so miners can prove
+hotkey ownership and submit LockProofs without touching raw cryptography.
 
-## Setup
+## Requirements
+
+- Python 3.11
+- [`uv`](https://github.com/astral-sh/uv) or `pip` for dependency management
+
+## Quick Start
 
 ```bash
-# Install dependencies
-uv sync
-
-# Run CLI (example)
-uv run cartha --help
+uv sync              # install dependencies into .venv
+uv run cartha         # show CLI help
 ```
 
-Configure backend URLs and keys via environment variables (e.g. `CARTHA_VERIFIER_URL`,
-`CARTHA_EVM_PRIVATE_KEY`) when running commands like `pair-status` or `prove-lock`.
+Run tests with `uv run pytest` or `make test` once the task list is implemented.

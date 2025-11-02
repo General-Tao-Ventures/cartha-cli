@@ -1,17 +1,7 @@
-# Python artifacts
 __pycache__/
 *.py[cod]
-.pytest_cache/
-.ruff_cache/
 .mypy_cache/
-
-# Environments
+.ruff_cache/
+.pytest_cache/
 .venv/
 .env
-.envrc
-
-# Build output
-dist/
-build/
-*.egg-info/
-cartha-cli
