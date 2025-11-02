@@ -9,6 +9,11 @@ from typing import Any
 
 import bittensor as bt
 import typer
+from rich import box
+from rich.console import Console
+from rich.json import JSON
+from rich.table import Table
+from rich.rule import Rule
 from web3 import Web3
 
 from .bt import RegistrationResult, get_subtensor, get_wallet, register_hotkey
@@ -23,23 +28,100 @@ from .verifier import (
 CHALLENGE_PREFIX = "cartha-pair-auth"
 CHALLENGE_TTL_SECONDS = 120
 
+console = Console(log_time_format="[%Y-%m-%d %H:%M:%S]")
 
-app = typer.Typer(help="Command line tooling for Cartha subnet miners.")
-subnet_app = typer.Typer(help="Subnet management commands.")
+
+app = typer.Typer(
+    help="Miner-facing tooling for registering on the Cartha subnet, managing pair passwords, and submitting lock proofs.",
+    add_completion=False,
+)
 pair_app = typer.Typer(help="Pair status commands.")
 
 
-app.add_typer(subnet_app, name="s")
 app.add_typer(pair_app, name="pair")
 
 
-@app.callback()
-def cli_root() -> None:
-    """Top-level callback to ensure settings load on startup."""
+def _print_root_help() -> None:
+    console.print(Rule("[bold cyan]Cartha CLI[/]"))
+    console.print(
+        "Miner-facing command line tool for Cartha subnet miners.\n"
+        "Authenticate against the verifier, inspect pair status, and submit LockProof payloads."
+    )
+    console.print()
+    console.print("[bold]Usage[/]: cartha [OPTIONS] COMMAND [ARGS]...")
+    console.print()
+
+    options = Table(title="Options", box=box.SIMPLE_HEAVY, show_header=False)
+    options.add_row("[cyan]-h[/], [cyan]--help[/]", "Show this message and exit.")
+    console.print(options)
+    console.print()
+
+    commands = Table(title="Commands", box=box.SIMPLE_HEAVY, show_header=False)
+    commands.add_row("[green]version[/]", "Show CLI version.")
+    commands.add_row(
+        "[green]s register[/]", "Register a hotkey and fetch the pair password."
+    )
+    commands.add_row(
+        "[green]pair status[/]", "Sign a challenge and display pair metadata."
+    )
+    commands.add_row(
+        "[green]prove-lock[/]", "Submit an externally signed LockProof payload."
+    )
+    commands.add_row(
+        "[green]claim-deposit[/]", "Alias for prove-lock (deposit-first flow)."
+    )
+    console.print(commands)
+    console.print()
+
+    env_table = Table(title="Environment", box=box.SIMPLE_HEAVY, show_header=False)
+    env_table.add_row(
+        "CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)"
+    )
+    env_table.add_row(
+        "CARTHA_VERIFIER_CLI_TOKEN", "Bearer token required for password endpoints."
+    )
+    env_table.add_row(
+        "CARTHA_NETWORK / CARTHA_NETUID", "Default network + subnet (finney / 35)."
+    )
+    env_table.add_row(
+        "BITTENSOR_WALLET_PATH",
+        "Override wallet path if keys are not in the default location.",
+    )
+    console.print(env_table)
+    console.print()
+    console.print("[dim]Made with ❤[/]")
+
+
+def _log_endpoint_banner() -> None:
     if settings.verifier_url.startswith("http://127.0.0.1"):
-        typer.echo(f"Using local verifier endpoint: {settings.verifier_url}")
+        console.log(
+            f"[bold cyan]Using local verifier endpoint[/]: {settings.verifier_url}"
+        )
     else:
-        typer.echo("Using configured verifier endpoint: Cartha")
+        console.log("[bold cyan]Using configured verifier endpoint[/]: Cartha")
+
+
+@app.callback(invoke_without_command=True)
+def cli_root(
+    ctx: typer.Context,
+    help_option: bool = typer.Option(
+        False,
+        "--help",
+        "-h",
+        help="Show this message and exit.",
+        is_eager=True,
+    ),
+) -> None:
+    """Top-level callback to provide rich help and endpoint banner."""
+    if help_option:
+        _print_root_help()
+        raise typer.Exit()
+
+    if ctx.invoked_subcommand is None:
+        _print_root_help()
+        raise typer.Exit()
+
+    _log_endpoint_banner()
 
 
 @app.command()
@@ -48,9 +130,9 @@ def version() -> None:
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        typer.echo(version("cartha-cli"))
+        console.log(f"[bold white]cartha-cli[/] {version('cartha-cli')}")
     except PackageNotFoundError:  # pragma: no cover
-        typer.echo("0.0.0")
+        console.log("[bold white]cartha-cli[/] 0.0.0")
 
 
 def _ensure_pair_registered(
@@ -64,47 +146,42 @@ def _ensure_pair_registered(
     metagraph = subtensor.metagraph(netuid)
     slot_index = int(slot)
     if slot_index < 0 or slot_index >= len(metagraph.hotkeys):
-        typer.secho(
-            f"UID {slot} not found in the metagraph (netuid {netuid}).",
-            fg=typer.colors.RED,
+        console.log(
+            f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid})."
         )
         raise typer.Exit(code=1)
     registered_hotkey = metagraph.hotkeys[slot_index]
     if registered_hotkey != hotkey:
-        typer.secho(
-            f"UID {slot} belongs to hotkey {registered_hotkey}, not {hotkey}.",
-            fg=typer.colors.RED,
+        console.log(
+            f"[bold red]UID mismatch[/]: slot {slot} belongs to [yellow]{registered_hotkey}[/], not {hotkey}."
         )
         raise typer.Exit(code=1)
 
 
-def _load_wallet(wallet_name: str, wallet_hotkey: str, expected_hotkey: str) -> bt.wallet:
+def _load_wallet(
+    wallet_name: str, wallet_hotkey: str, expected_hotkey: str
+) -> bt.wallet:
     try:
         wallet = get_wallet(wallet_name, wallet_hotkey)
     except bt.KeyFileError as exc:
-        typer.secho(
-            f"Hotkey files for wallet '{wallet_name}/{wallet_hotkey}' are missing. "
-            "Import or create the wallet before retrying.",
-            fg=typer.colors.RED,
+        console.log(
+            "[bold red]Missing hotkey files[/] "
+            f"for wallet '{wallet_name}/{wallet_hotkey}'. Import or create the wallet before retrying."
         )
         raise typer.Exit(code=1) from exc
     except Exception as exc:  # pragma: no cover - defensive
-        typer.secho(f"Failed to load wallet: {exc}", fg=typer.colors.RED)
+        console.log(f"[bold red]Failed to load wallet[/]: {exc}")
         raise typer.Exit(code=1) from exc
 
     if wallet.hotkey.ss58_address != expected_hotkey:
-        typer.secho(
-            "Loaded wallet hotkey does not match the supplied hotkey address.",
-            fg=typer.colors.RED,
+        console.log(
+            "[bold red]Hotkey mismatch[/]: loaded wallet hotkey does not match the supplied address."
         )
         raise typer.Exit(code=1)
 
     if not getattr(wallet.hotkey, "is_unlocked", lambda: False)():
-        typer.secho(
-            "Hotkey is locked. Run "
-            "`btcli wallet unlock --wallet.name ... --wallet.hotkey ...` "
-            "and try again.",
-            fg=typer.colors.RED,
+        console.log(
+            "[bold red]Hotkey locked[/]: run `btcli wallet unlock --wallet.name ... --wallet.hotkey ...` before retrying."
         )
         raise typer.Exit(code=1)
 
@@ -134,13 +211,14 @@ def _build_pair_auth_payload(
 
     verifier_keypair = bt.Keypair(ss58_address=hotkey)
     if not verifier_keypair.verify(message_bytes, signature_bytes):
-        typer.secho("Unable to verify the ownership signature locally.", fg=typer.colors.RED)
+        console.log("[bold red]Unable to verify the ownership signature locally.[/]")
         raise typer.Exit(code=1)
 
     expires_at = timestamp + CHALLENGE_TTL_SECONDS
     expiry_time = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
-    typer.echo(
-        f"Ownership challenge signed (expires {CHALLENGE_TTL_SECONDS}s from now at {expiry_time})."
+    console.log(
+        "[bold green]Ownership challenge signed[/] "
+        f"(expires in {CHALLENGE_TTL_SECONDS}s at {expiry_time})."
     )
 
     return {
@@ -173,14 +251,16 @@ def _request_pair_status_or_password(
         if mode == "password":
             return fetch_pair_password(**request_kwargs)
     except VerifierError as exc:
-        typer.secho(f"Verifier request failed: {exc}", fg=typer.colors.RED)
+        console.log(f"[bold red]Verifier request failed[/]: {exc}")
         raise typer.Exit(code=1)
     raise RuntimeError(f"Unknown mode {mode}")  # pragma: no cover
 
 
-@subnet_app.command("register")
-def subnet_register(
-    network: str = typer.Option(settings.network, "--network", help="Bittensor network name."),
+@app.command("register")
+def register(
+    network: str = typer.Option(
+        settings.network, "--network", help="Bittensor network name."
+    ),
     wallet_name: str = typer.Option(
         ..., "--wallet-name", "--wallet.name", help="Coldkey wallet name."
     ),
@@ -193,11 +273,17 @@ def subnet_register(
         "--burned/--pow",
         help="Burned registration by default; pass --pow to run PoW registration.",
     ),
-    cuda: bool = typer.Option(False, "--cuda", help="Enable CUDA for PoW registration."),
+    cuda: bool = typer.Option(
+        False, "--cuda", help="Enable CUDA for PoW registration."
+    ),
 ) -> None:
     """Register the specified hotkey on the target subnet and print the UID."""
 
-    typer.echo(f"Registering hotkey '{wallet_hotkey}' on netuid {netuid} (network={network})")
+    console.log(
+        "[bold white]Registering[/] "
+        f"coldkey [cyan]{wallet_name}[/] hotkey [yellow]{wallet_hotkey}[/] "
+        f"on netuid {netuid} (network={network})"
+    )
 
     result: RegistrationResult = register_hotkey(
         network=network,
@@ -209,21 +295,21 @@ def subnet_register(
     )
 
     if result.status == "already":
-        typer.echo(f"Hotkey already registered. UID: {result.uid}")
+        console.log(f"[bold yellow]Hotkey already registered[/]. UID: {result.uid}")
         return
 
     if not result.success:
-        typer.secho("Registration failed.", fg=typer.colors.RED)
+        console.log("[bold red]Registration failed.[/]")
         raise typer.Exit(code=1)
 
     if result.status == "burned":
-        typer.echo("Burned registration success.")
+        console.log("[bold green]Burned registration success.[/]")
     else:
-        typer.echo("Registration success.")
+        console.log("[bold green]Registration success.[/]")
 
     if result.uid is not None:
         slot_uid = str(result.uid)
-        typer.echo(f"Registered uid: {slot_uid}")
+        console.log(f"[bold green]Registered UID[/]: {slot_uid}")
         auth_payload = _build_pair_auth_payload(
             network=network,
             netuid=netuid,
@@ -242,22 +328,21 @@ def subnet_register(
         )
         pair_pwd = password_payload.get("pwd")
         if pair_pwd:
-            typer.secho(
-                f"Pair password for {result.hotkey}/{slot_uid}: {pair_pwd}",
-                fg=typer.colors.GREEN,
+            console.log(
+                f"[bold green]Pair password[/] for {result.hotkey}/{slot_uid}: [yellow]{pair_pwd}[/]"
             )
-            typer.secho(
-                "Keep it safe—eyes only. Exposure lets others steal your locked USDC deposit.",
-                fg=typer.colors.YELLOW,
+            console.log(
+                "[bold yellow]Keep it safe[/]—eyes only. Exposure lets others steal your locked USDC deposit."
             )
         else:
-            typer.secho(
-                "Verifier did not return a pair password. "
-                "Run 'cartha pair status' to check availability.",
-                fg=typer.colors.YELLOW,
+            console.log(
+                "[bold yellow]Verifier did not return a pair password[/]. "
+                "Run 'cartha pair status' to check availability."
             )
     else:
-        typer.echo("Warning: UID not yet available (node may still be syncing).")
+        console.log(
+            "[bold yellow]UID not yet available[/] (node may still be syncing)."
+        )
 
 
 @pair_app.command("status")
@@ -270,9 +355,13 @@ def pair_status(
     wallet_hotkey: str = typer.Option(
         ..., "--wallet-hotkey", "--wallet.hotkey", help="Hotkey name used for signing."
     ),
-    network: str = typer.Option(settings.network, "--network", help="Bittensor network name."),
+    network: str = typer.Option(
+        settings.network, "--network", help="Bittensor network name."
+    ),
     netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
-    json_output: bool = typer.Option(False, "--json", help="Emit the raw JSON response."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the raw JSON response."
+    ),
 ) -> None:
     """Show the verifier state for a miner pair."""
     slot_id = str(slot)
@@ -299,16 +388,18 @@ def pair_status(
     sanitized["slot"] = slot_id
 
     if json_output:
-        typer.echo(json.dumps(sanitized, indent=2))
+        console.print(JSON.from_data(sanitized))
         return
 
-    typer.echo(f"Hotkey: {hotkey}")
-    typer.echo(f"Slot UID: {slot_id}")
-    typer.echo(f"State: {sanitized['state']}")
-    typer.echo(f"Password issued: {'yes' if sanitized.get('has_pwd') else 'no'}")
+    table = Table(title="Pair Status", show_header=False)
+    table.add_row("Hotkey", hotkey)
+    table.add_row("Slot UID", slot_id)
+    table.add_row("State", sanitized["state"])
+    table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
     if issued_at:
-        typer.echo(f"Password issued at: {issued_at}")
+        table.add_row("Password issued at", issued_at)
+    console.print(table)
 
 
 def _submit_lock_proof_payload(
@@ -324,18 +415,18 @@ def _submit_lock_proof_payload(
     signature: str,
 ) -> dict[str, Any]:
     if amount <= 0:
-        typer.secho("Amount must be a positive integer.", fg=typer.colors.RED)
+        console.log("[bold red]Amount must be a positive integer.[/]")
         raise typer.Exit(code=1)
 
     if not Web3.is_address(vault):
-        typer.secho("Vault address must be a valid EVM address.", fg=typer.colors.RED)
+        console.log("[bold red]Vault address must be a valid EVM address.[/]")
         raise typer.Exit(code=1)
     if not Web3.is_address(miner_evm):
-        typer.secho("Miner EVM address must be a valid address.", fg=typer.colors.RED)
+        console.log("[bold red]Miner EVM address must be a valid address.[/]")
         raise typer.Exit(code=1)
 
     if not tx_hash.startswith("0x"):
-        typer.secho("Transaction hash must be a 0x-prefixed hex string.", fg=typer.colors.RED)
+        console.log("[bold red]Transaction hash must be a 0x-prefixed hex string.[/]")
         raise typer.Exit(code=1)
 
     if not signature.startswith("0x"):
@@ -358,20 +449,24 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
     try:
         response = submit_lock_proof(payload)
     except VerifierError as exc:
-        typer.secho(f"Lock proof rejected: {exc}", fg=typer.colors.RED)
+        console.log(f"[bold red]Lock proof rejected[/]: {exc}")
         raise typer.Exit(code=1)
 
     if json_output:
-        typer.echo(json.dumps(response, indent=2))
+        console.print(JSON.from_data(response))
     else:
-        typer.echo("Lock proof submitted successfully.")
+        console.log("[bold green]Lock proof submitted successfully.[/]")
 
 
 @app.command("prove-lock")
 def prove_lock(
-    chain: int = typer.Option(..., "--chain", help="EVM chain ID for the vault transaction."),
+    chain: int = typer.Option(
+        ..., "--chain", help="EVM chain ID for the vault transaction."
+    ),
     vault: str = typer.Option(..., "--vault", help="Vault contract address."),
-    tx: str = typer.Option(..., "--tx", help="Transaction hash for the LockCreated event."),
+    tx: str = typer.Option(
+        ..., "--tx", help="Transaction hash for the LockCreated event."
+    ),
     amount: int = typer.Option(..., "--amount", help="Lock amount in wei."),
     hotkey: str = typer.Option(..., "--hotkey", help="Bittensor hotkey SS58 address."),
     slot: int = typer.Option(..., "--slot", help="Subnet UID assigned to the miner."),
@@ -382,7 +477,9 @@ def prove_lock(
         ..., "--pwd", help="Pair password used when signing the LockProof payload."
     ),
     signature: str = typer.Option(..., "--signature", help="Hex EIP-712 signature."),
-    json_output: bool = typer.Option(False, "--json", help="Emit the verifier response as JSON."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the verifier response as JSON."
+    ),
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
     slot_id = str(slot)
@@ -402,9 +499,13 @@ def prove_lock(
 
 @app.command("claim-deposit")
 def claim_deposit(
-    chain: int = typer.Option(..., "--chain", help="EVM chain ID for the vault transaction."),
+    chain: int = typer.Option(
+        ..., "--chain", help="EVM chain ID for the vault transaction."
+    ),
     vault: str = typer.Option(..., "--vault", help="Vault contract address."),
-    tx: str = typer.Option(..., "--tx", help="Transaction hash for the LockCreated event."),
+    tx: str = typer.Option(
+        ..., "--tx", help="Transaction hash for the LockCreated event."
+    ),
     amount: int = typer.Option(..., "--amount", help="Lock amount in wei."),
     hotkey: str = typer.Option(..., "--hotkey", help="Bittensor hotkey SS58 address."),
     slot: int = typer.Option(..., "--slot", help="Subnet UID assigned to the miner."),
@@ -415,7 +516,9 @@ def claim_deposit(
         ..., "--pwd", help="Pair password used when signing the LockProof payload."
     ),
     signature: str = typer.Option(..., "--signature", help="Hex EIP-712 signature."),
-    json_output: bool = typer.Option(False, "--json", help="Emit the verifier response as JSON."),
+    json_output: bool = typer.Option(
+        False, "--json", help="Emit the verifier response as JSON."
+    ),
 ) -> None:
     """Alias for prove-lock for deposit-first workflows."""
     prove_lock(

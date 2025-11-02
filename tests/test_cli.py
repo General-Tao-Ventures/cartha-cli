@@ -39,7 +39,6 @@ def test_register_command_success(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "s",
             "register",
             "--wallet-name",
             "cold",
@@ -52,9 +51,9 @@ def test_register_command_success(monkeypatch):
         ],
     )
     assert result.exit_code == 0
-    assert "Registration success." in result.stdout
-    assert "Registered uid: 10" in result.stdout
-    assert "Pair password for bt1abc/10: 0x11" in result.stdout
+    assert "Registration success" in result.stdout
+    assert "Registered UID: 10" in result.stdout
+    assert "Pair password for bt1abc/10" in result.stdout
     assert captured["mode"] == "password"
 
 
@@ -67,7 +66,6 @@ def test_register_command_already(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "s",
             "register",
             "--wallet-name",
             "cold",
@@ -88,7 +86,6 @@ def test_register_command_failure(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "s",
             "register",
             "--wallet-name",
             "cold",
@@ -132,8 +129,11 @@ def test_pair_status_command(monkeypatch):
         ],
     )
     assert result.exit_code == 0
-    assert "State: active" in result.stdout
-    assert "Password issued: yes" in result.stdout
+    assert "Pair Status" in result.stdout
+    assert "State" in result.stdout
+    assert "active" in result.stdout
+    assert "Password issued" in result.stdout
+    assert "yes" in result.stdout
     assert "0x22" not in result.stdout
 
 
