@@ -12,8 +12,8 @@ import typer
 from rich import box
 from rich.console import Console
 from rich.json import JSON
-from rich.table import Table
 from rich.rule import Rule
+from rich.table import Table
 from web3 import Web3
 
 from .bt import RegistrationResult, get_subtensor, get_wallet, register_hotkey
@@ -159,7 +159,7 @@ def _ensure_pair_registered(
 
 
 def _load_wallet(
-    wallet_name: str, wallet_hotkey: str, expected_hotkey: str
+    wallet_name: str, wallet_hotkey: str, expected_hotkey: str | None
 ) -> bt.wallet:
     try:
         wallet = get_wallet(wallet_name, wallet_hotkey)
@@ -173,29 +173,11 @@ def _load_wallet(
         console.log(f"[bold red]Failed to load wallet[/]: {exc}")
         raise typer.Exit(code=1) from exc
 
-    if wallet.hotkey.ss58_address != expected_hotkey:
+    if expected_hotkey and wallet.hotkey.ss58_address != expected_hotkey:
         console.log(
             "[bold red]Hotkey mismatch[/]: loaded wallet hotkey does not match the supplied address."
         )
         raise typer.Exit(code=1)
-
-    if not getattr(wallet.hotkey, "is_unlocked", lambda: False)():
-        password = typer.prompt(
-            "Enter hotkey password", hide_input=True, confirmation_prompt=False
-        )
-        try:
-            unlock_method = getattr(wallet.hotkey, "unlock", None)
-            if callable(unlock_method):
-                unlock_method(password)
-        except Exception as exc:  # pragma: no cover - defensive
-            console.log(f"[bold red]Failed to unlock hotkey[/]: {exc}")
-            raise typer.Exit(code=1)
-
-        if not wallet.hotkey.is_unlocked():
-            console.log(
-                "[bold red]Hotkey remains locked[/]: verify the password and retry."
-            )
-            raise typer.Exit(code=1)
 
     return wallet
 
@@ -209,9 +191,8 @@ def _build_pair_auth_payload(
     wallet_name: str,
     wallet_hotkey: str,
 ) -> dict[str, Any]:
-    _ensure_pair_registered(network=network, netuid=netuid, slot=slot, hotkey=hotkey)
-
     wallet = _load_wallet(wallet_name, wallet_hotkey, hotkey)
+    _ensure_pair_registered(network=network, netuid=netuid, slot=slot, hotkey=hotkey)
 
     timestamp = int(time.time())
     message = (
@@ -372,34 +353,27 @@ def register(
 
 @pair_app.command("status")
 def pair_status(
-    hotkey: str | None = typer.Option(
-        None,
-        "--hotkey",
-        help="Bittensor hotkey SS58 address.",
-        prompt="Hotkey SS58 address",
-        show_default=False,
-    ),
-    slot: int | None = typer.Option(
-        None,
-        "--slot",
-        help="Subnet UID assigned to the miner.",
-        prompt="Slot UID",
-        show_default=False,
-    ),
-    wallet_name: str | None = typer.Option(
-        None,
+    wallet_name: str = typer.Option(
+        ...,
         "--wallet-name",
         "--wallet.name",
-        help="Coldkey wallet name for signing.",
         prompt="Coldkey wallet name",
+        help="Coldkey wallet name used for signing.",
         show_default=False,
     ),
-    wallet_hotkey: str | None = typer.Option(
-        None,
+    wallet_hotkey: str = typer.Option(
+        ...,
         "--wallet-hotkey",
         "--wallet.hotkey",
+        prompt="Hotkey name",
         help="Hotkey name used for signing.",
-        prompt="Hotkey name for signing",
+        show_default=False,
+    ),
+    slot: int = typer.Option(
+        ...,
+        "--slot",
+        prompt="Slot UID",
+        help="Subnet UID assigned to the miner.",
         show_default=False,
     ),
     network: str = typer.Option(
@@ -411,12 +385,11 @@ def pair_status(
     ),
 ) -> None:
     """Show the verifier state for a miner pair."""
-    assert hotkey is not None
-    assert slot is not None
-    assert wallet_name is not None
-    assert wallet_hotkey is not None
-
+    wallet = _load_wallet(wallet_name, wallet_hotkey, None)
+    hotkey = wallet.hotkey.ss58_address
     slot_id = str(slot)
+    _ensure_pair_registered(network=network, netuid=netuid, slot=slot_id, hotkey=hotkey)
+
     auth_payload = _build_pair_auth_payload(
         network=network,
         netuid=netuid,
@@ -580,15 +553,24 @@ def prove_lock(
     ),
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
-    assert chain is not None
-    assert vault is not None
-    assert tx is not None
-    assert amount is not None
-    assert hotkey is not None
-    assert slot is not None
-    assert miner_evm is not None
-    assert password is not None
-    assert signature is not None
+    if chain is None:
+        chain = int(typer.prompt("Chain ID"))
+    if vault is None:
+        vault = typer.prompt("Vault contract address")
+    if tx is None:
+        tx = typer.prompt("Transaction hash")
+    if amount is None:
+        amount = int(typer.prompt("Lock amount (wei)"))
+    if hotkey is None:
+        hotkey = typer.prompt("Hotkey SS58 address")
+    if slot is None:
+        slot = int(typer.prompt("Slot UID"))
+    if miner_evm is None:
+        miner_evm = typer.prompt("Miner EVM address")
+    if password is None:
+        password = typer.prompt("Pair password (0x...)", hide_input=False)
+    if signature is None:
+        signature = typer.prompt("EIP-712 signature (0x...)")
 
     slot_id = str(slot)
     payload = _submit_lock_proof_payload(
@@ -639,15 +621,6 @@ def claim_deposit(
     ),
 ) -> None:
     """Alias for prove-lock for deposit-first workflows."""
-    assert chain is not None
-    assert vault is not None
-    assert tx is not None
-    assert amount is not None
-    assert hotkey is not None
-    assert slot is not None
-    assert miner_evm is not None
-    assert password is not None
-    assert signature is not None
     prove_lock(
         chain=chain,
         vault=vault,

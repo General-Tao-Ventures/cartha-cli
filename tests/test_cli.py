@@ -110,16 +110,25 @@ def test_pair_status_command(monkeypatch):
             "issued_at": "2024-05-20T12:00:00Z",
         }
 
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
     monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
     monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+    monkeypatch.setattr(
+        "cartha_cli.main._load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr(
+        "cartha_cli.main._ensure_pair_registered", lambda **kwargs: None
+    )
 
     result = runner.invoke(
         app,
         [
             "pair",
             "status",
-            "--hotkey",
-            "bt1xyz",
             "--slot",
             "42",
             "--wallet-name",
@@ -149,16 +158,25 @@ def test_pair_status_command_json(monkeypatch):
             "issued_at": None,
         }
 
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
     monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
     monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+    monkeypatch.setattr(
+        "cartha_cli.main._load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr(
+        "cartha_cli.main._ensure_pair_registered", lambda **kwargs: None
+    )
 
     result = runner.invoke(
         app,
         [
             "pair",
             "status",
-            "--hotkey",
-            "bt1xyz",
             "--slot",
             "7",
             "--wallet-name",
