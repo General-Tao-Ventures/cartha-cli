@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Dict
 
 import requests
@@ -16,13 +15,6 @@ class VerifierError(RuntimeError):
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
-
-
-@dataclass
-class PairStatus:
-    state: str
-    has_pwd: bool
-    issued_at: str | None
 
 
 def _build_url(path: str) -> str:
@@ -74,21 +66,54 @@ def _request(
     return data
 
 
-def fetch_pair_status(hotkey: str, slot: str) -> Dict[str, Any]:
-    """Return the status for a (hotkey, slotUID) pair."""
+def fetch_pair_status(
+    *,
+    hotkey: str,
+    slot: str,
+    network: str,
+    netuid: int,
+    message: str,
+    signature: str,
+) -> Dict[str, Any]:
+    """Return the status for a (hotkey, slotUID) pair after verifying ownership."""
+    payload = {
+        "hotkey": hotkey,
+        "slot": slot,
+        "network": network,
+        "netuid": netuid,
+        "message": message,
+        "signature": signature,
+    }
     return _request(
-        "GET",
+        "POST",
         "/v1/pair/status",
-        params={"hotkey": hotkey, "slot": slot},
+        json_data=payload,
+        require_cli_token=True,
     )
 
 
-def fetch_pair_password(hotkey: str, slot: str) -> Dict[str, Any]:
+def fetch_pair_password(
+    *,
+    hotkey: str,
+    slot: str,
+    network: str,
+    netuid: int,
+    message: str,
+    signature: str,
+) -> Dict[str, Any]:
     """Fetch the pair password via the secured endpoint."""
+    payload = {
+        "hotkey": hotkey,
+        "slot": slot,
+        "network": network,
+        "netuid": netuid,
+        "message": message,
+        "signature": signature,
+    }
     return _request(
-        "GET",
-        "/v1/pair/password",
-        params={"hotkey": hotkey, "slot": slot},
+        "POST",
+        "/v1/pair/password/retrieve",
+        json_data=payload,
         require_cli_token=True,
     )
 

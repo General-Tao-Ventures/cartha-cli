@@ -1,13 +1,13 @@
-import sys
 import json
+import sys
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-from cartha_cli.main import app
 from cartha_cli.bt import RegistrationResult
+from cartha_cli.main import app
 
 
 runner = CliRunner()
@@ -23,11 +23,19 @@ def test_register_command_success(monkeypatch):
     def fake_register_hotkey(**kwargs):
         return RegistrationResult(status="pow", success=True, uid=10, hotkey="bt1abc")
 
+    def fake_auth_payload(**kwargs):
+        return {"message": "msg", "signature": "0xdead", "expires_at": 0}
+
+    captured = {}
+
+    def fake_request(**kwargs):
+        captured["mode"] = kwargs["mode"]
+        return {"pwd": "0x" + "11" * 32}
+
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr(
-        "cartha_cli.main.fetch_pair_password",
-        lambda hotkey, slot: {"pwd": "0x" + "11" * 32},
-    )
+    monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+
     result = runner.invoke(
         app,
         [
@@ -36,7 +44,7 @@ def test_register_command_success(monkeypatch):
             "--wallet-name",
             "cold",
             "--wallet-hotkey",
-            "hot",
+            "bt1abc",
             "--network",
             "finney",
             "--netuid",
@@ -47,6 +55,7 @@ def test_register_command_success(monkeypatch):
     assert "Registration success." in result.stdout
     assert "Registered uid: 10" in result.stdout
     assert "Pair password for bt1abc/10: 0x11" in result.stdout
+    assert captured["mode"] == "password"
 
 
 def test_register_command_already(monkeypatch):
@@ -54,7 +63,7 @@ def test_register_command_already(monkeypatch):
         return RegistrationResult(status="already", success=True, uid=7, hotkey="bt1abc")
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr("cartha_cli.main.fetch_pair_password", lambda *args, **kwargs: None)
+
     result = runner.invoke(
         app,
         [
@@ -63,7 +72,7 @@ def test_register_command_already(monkeypatch):
             "--wallet-name",
             "cold",
             "--wallet-hotkey",
-            "hot",
+            "bt1abc",
         ],
     )
     assert result.exit_code == 0
@@ -76,7 +85,6 @@ def test_register_command_failure(monkeypatch):
         return RegistrationResult(status="pow", success=False, uid=None, hotkey="bt1abc")
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr("cartha_cli.main.fetch_pair_password", lambda *args, **kwargs: None)
     result = runner.invoke(
         app,
         [
@@ -85,15 +93,19 @@ def test_register_command_failure(monkeypatch):
             "--wallet-name",
             "cold",
             "--wallet-hotkey",
-            "hot",
+            "bt1abc",
         ],
     )
     assert result.exit_code == 1
     assert "Registration failed" in result.stdout
 
 
-def test_pair_status_command_hides_password(monkeypatch):
-    def fake_status(hotkey, slot):
+def test_pair_status_command(monkeypatch):
+    def fake_auth_payload(**kwargs):
+        return {"message": "msg", "signature": "0xdead", "expires_at": 0}
+
+    def fake_request(**kwargs):
+        assert kwargs["mode"] == "status"
         return {
             "state": "active",
             "has_pwd": True,
@@ -101,10 +113,23 @@ def test_pair_status_command_hides_password(monkeypatch):
             "issued_at": "2024-05-20T12:00:00Z",
         }
 
-    monkeypatch.setattr("cartha_cli.main.fetch_pair_status", fake_status)
+    monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+
     result = runner.invoke(
         app,
-        ["pair", "status", "--hotkey", "bt1xyz", "--slot", "42"],
+        [
+            "pair",
+            "status",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "42",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1xyz",
+        ],
     )
     assert result.exit_code == 0
     assert "State: active" in result.stdout
@@ -113,7 +138,10 @@ def test_pair_status_command_hides_password(monkeypatch):
 
 
 def test_pair_status_command_json(monkeypatch):
-    def fake_status(hotkey, slot):
+    def fake_auth_payload(**kwargs):
+        return {"message": "msg", "signature": "0xdead", "expires_at": 0}
+
+    def fake_request(**kwargs):
         return {
             "state": "pending",
             "has_pwd": False,
@@ -121,15 +149,28 @@ def test_pair_status_command_json(monkeypatch):
             "issued_at": None,
         }
 
-    monkeypatch.setattr("cartha_cli.main.fetch_pair_status", fake_status)
+    monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+
     result = runner.invoke(
         app,
-        ["pair", "status", "--hotkey", "bt1xyz", "--slot", "7", "--json"],
+        [
+            "pair",
+            "status",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "7",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1xyz",
+            "--json",
+        ],
     )
     assert result.exit_code == 0
     stdout = result.stdout
     json_start = stdout.find("{")
-    assert json_start != -1
     payload = json.loads(stdout[json_start:])
     assert payload["state"] == "pending"
     assert payload["hotkey"] == "bt1xyz"
@@ -137,39 +178,14 @@ def test_pair_status_command_json(monkeypatch):
     assert "pwd" not in payload
 
 
-class DummySignedMessage:
-    def __init__(self, signature: bytes) -> None:
-        self.signature = signature
-
-
-class DummyAccount:
-    def __init__(self, address: str) -> None:
-        self.address = address
-
-    def sign_message(self, _message):
-        return DummySignedMessage(b"\xaa" * 65)
-
-
 def test_prove_lock_command_success(monkeypatch):
-    def fake_status(hotkey, slot):
-        return {"state": "active", "has_pwd": True}
-
-    def fake_password(hotkey, slot):
-        return {"pwd": "0x" + "44" * 32}
-
     captured = {}
 
     def fake_submit(payload):
         captured["payload"] = payload
         return {"ok": True}
 
-    monkeypatch.setattr("cartha_cli.main.fetch_pair_status", fake_status)
-    monkeypatch.setattr("cartha_cli.main.fetch_pair_password", fake_password)
     monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
-    monkeypatch.setattr(
-        "cartha_cli.main._load_evm_account",
-        lambda: DummyAccount("0x1111111111111111111111111111111111111111"),
-    )
 
     result = runner.invoke(
         app,
@@ -187,12 +203,17 @@ def test_prove_lock_command_success(monkeypatch):
             "bt1xyz",
             "--slot",
             "9",
+            "--miner-evm",
+            "0x1111111111111111111111111111111111111111",
+            "--pwd",
+            "0x" + "44" * 32,
+            "--signature",
+            "0x" + "55" * 65,
         ],
     )
 
     assert result.exit_code == 0
     assert "Lock proof submitted successfully." in result.stdout
-    assert "payload" in captured
     payload = captured["payload"]
     assert payload["minerHotkey"] == "bt1xyz"
     assert payload["slotUID"] == "9"
