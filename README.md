@@ -36,10 +36,12 @@ perform a local challenge/response handshake:
 
 1. The CLI loads your wallet (`--wallet-name`, `--wallet-hotkey`) and confirms it owns the supplied hotkey.
 2. A challenge string is generated:
-   ```
+
+  ```json
    cartha-pair-auth|network:{network}|netuid:{netuid}|slot:{slot}|hotkey:{hotkey}|ts:{unix_ts}
-   ```
-3. The hotkey signs the challenge via `wallet.hotkey.sign(...)` and the CLI verifies the signature locally.
+  ```
+
+3.The hotkey signs the challenge via `wallet.hotkey.sign(...)` and the CLI verifies the signature locally.
 4. The signed payload plus bearer token is POSTed to the verifier (`/v1/pair/status` or `/v1/pair/password/retrieve`).
 5. The challenge expires 120 seconds after issuance; the CLI prints the expiry timestamp.
 
@@ -49,7 +51,7 @@ If the wallet is locked or the hotkey/UID do not match the on-chain metagraph, t
 
 ```bash
 # Register a hotkey via burned registration and print UID + pair password
-cartha s register \
+cartha register \
   --wallet-name cold --wallet-hotkey hot \
   --network finney --netuid 35
 

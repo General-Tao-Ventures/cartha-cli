@@ -51,15 +51,15 @@ def _print_root_help() -> None:
     console.print("[bold]Usage[/]: cartha [OPTIONS] COMMAND [ARGS]...")
     console.print()
 
-    options = Table(title="Options", box=box.SIMPLE_HEAVY, show_header=False)
+    options = Table(title="Options", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
     options.add_row("[cyan]-h[/], [cyan]--help[/]", "Show this message and exit.")
     console.print(options)
     console.print()
 
-    commands = Table(title="Commands", box=box.SIMPLE_HEAVY, show_header=False)
+    commands = Table(title="Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
     commands.add_row("[green]version[/]", "Show CLI version.")
     commands.add_row(
-        "[green]s register[/]", "Register a hotkey and fetch the pair password."
+        "[green]register[/]", "Register a hotkey and fetch the pair password."
     )
     commands.add_row(
         "[green]pair status[/]", "Sign a challenge and display pair metadata."
@@ -73,7 +73,7 @@ def _print_root_help() -> None:
     console.print(commands)
     console.print()
 
-    env_table = Table(title="Environment", box=box.SIMPLE_HEAVY, show_header=False)
+    env_table = Table(title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
     env_table.add_row(
         "CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)"
     )
@@ -89,7 +89,7 @@ def _print_root_help() -> None:
     )
     console.print(env_table)
     console.print()
-    console.print("[dim]Made with ❤[/]")
+    console.print("[dim]Made with ❤ by GTV[/]")
 
 
 def _log_endpoint_banner() -> None:
@@ -180,10 +180,22 @@ def _load_wallet(
         raise typer.Exit(code=1)
 
     if not getattr(wallet.hotkey, "is_unlocked", lambda: False)():
-        console.log(
-            "[bold red]Hotkey locked[/]: run `btcli wallet unlock --wallet.name ... --wallet.hotkey ...` before retrying."
+        password = typer.prompt(
+            "Enter hotkey password", hide_input=True, confirmation_prompt=False
         )
-        raise typer.Exit(code=1)
+        try:
+            unlock_method = getattr(wallet.hotkey, "unlock", None)
+            if callable(unlock_method):
+                unlock_method(password)
+        except Exception as exc:  # pragma: no cover - defensive
+            console.log(f"[bold red]Failed to unlock hotkey[/]: {exc}")
+            raise typer.Exit(code=1)
+
+        if not wallet.hotkey.is_unlocked():
+            console.log(
+                "[bold red]Hotkey remains locked[/]: verify the password and retry."
+            )
+            raise typer.Exit(code=1)
 
     return wallet
 
@@ -262,10 +274,20 @@ def register(
         settings.network, "--network", help="Bittensor network name."
     ),
     wallet_name: str = typer.Option(
-        ..., "--wallet-name", "--wallet.name", help="Coldkey wallet name."
+        None,
+        "--wallet-name",
+        "--wallet.name",
+        prompt="Coldkey wallet name",
+        help="Coldkey wallet name.",
+        show_default=False,
     ),
     wallet_hotkey: str = typer.Option(
-        ..., "--wallet-hotkey", "--wallet.hotkey", help="Hotkey name."
+        None,
+        "--wallet-hotkey",
+        "--wallet.hotkey",
+        prompt="Hotkey name",
+        help="Hotkey name.",
+        show_default=False,
     ),
     netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
     burned: bool = typer.Option(
@@ -278,6 +300,9 @@ def register(
     ),
 ) -> None:
     """Register the specified hotkey on the target subnet and print the UID."""
+
+    assert wallet_name is not None  # nosec - enforced by Typer prompt
+    assert wallet_hotkey is not None  # nosec - enforced by Typer prompt
 
     console.log(
         "[bold white]Registering[/] "
@@ -347,13 +372,35 @@ def register(
 
 @pair_app.command("status")
 def pair_status(
-    hotkey: str = typer.Option(..., "--hotkey", help="Bittensor hotkey SS58 address."),
-    slot: int = typer.Option(..., "--slot", help="Subnet UID assigned to the miner."),
-    wallet_name: str = typer.Option(
-        ..., "--wallet-name", "--wallet.name", help="Coldkey wallet name for signing."
+    hotkey: str | None = typer.Option(
+        None,
+        "--hotkey",
+        help="Bittensor hotkey SS58 address.",
+        prompt="Hotkey SS58 address",
+        show_default=False,
     ),
-    wallet_hotkey: str = typer.Option(
-        ..., "--wallet-hotkey", "--wallet.hotkey", help="Hotkey name used for signing."
+    slot: int | None = typer.Option(
+        None,
+        "--slot",
+        help="Subnet UID assigned to the miner.",
+        prompt="Slot UID",
+        show_default=False,
+    ),
+    wallet_name: str | None = typer.Option(
+        None,
+        "--wallet-name",
+        "--wallet.name",
+        help="Coldkey wallet name for signing.",
+        prompt="Coldkey wallet name",
+        show_default=False,
+    ),
+    wallet_hotkey: str | None = typer.Option(
+        None,
+        "--wallet-hotkey",
+        "--wallet.hotkey",
+        help="Hotkey name used for signing.",
+        prompt="Hotkey name for signing",
+        show_default=False,
     ),
     network: str = typer.Option(
         settings.network, "--network", help="Bittensor network name."
@@ -364,6 +411,11 @@ def pair_status(
     ),
 ) -> None:
     """Show the verifier state for a miner pair."""
+    assert hotkey is not None
+    assert slot is not None
+    assert wallet_name is not None
+    assert wallet_hotkey is not None
+
     slot_id = str(slot)
     auth_payload = _build_pair_auth_payload(
         network=network,
@@ -460,28 +512,84 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
 
 @app.command("prove-lock")
 def prove_lock(
-    chain: int = typer.Option(
-        ..., "--chain", help="EVM chain ID for the vault transaction."
+    chain: int | None = typer.Option(
+        None,
+        "--chain",
+        help="EVM chain ID for the vault transaction.",
+        prompt="Chain ID",
+        show_default=False,
     ),
-    vault: str = typer.Option(..., "--vault", help="Vault contract address."),
-    tx: str = typer.Option(
-        ..., "--tx", help="Transaction hash for the LockCreated event."
+    vault: str | None = typer.Option(
+        None,
+        "--vault",
+        help="Vault contract address.",
+        prompt="Vault contract address",
+        show_default=False,
     ),
-    amount: int = typer.Option(..., "--amount", help="Lock amount in wei."),
-    hotkey: str = typer.Option(..., "--hotkey", help="Bittensor hotkey SS58 address."),
-    slot: int = typer.Option(..., "--slot", help="Subnet UID assigned to the miner."),
-    miner_evm: str = typer.Option(
-        ..., "--miner-evm", help="EVM address that signed the LockProof payload."
+    tx: str | None = typer.Option(
+        None,
+        "--tx",
+        help="Transaction hash for the LockCreated event.",
+        prompt="Transaction hash",
+        show_default=False,
     ),
-    password: str = typer.Option(
-        ..., "--pwd", help="Pair password used when signing the LockProof payload."
+    amount: int | None = typer.Option(
+        None,
+        "--amount",
+        help="Lock amount in wei.",
+        prompt="Lock amount (wei)",
+        show_default=False,
     ),
-    signature: str = typer.Option(..., "--signature", help="Hex EIP-712 signature."),
+    hotkey: str | None = typer.Option(
+        None,
+        "--hotkey",
+        help="Bittensor hotkey SS58 address.",
+        prompt="Hotkey SS58 address",
+        show_default=False,
+    ),
+    slot: int | None = typer.Option(
+        None,
+        "--slot",
+        help="Subnet UID assigned to the miner.",
+        prompt="Slot UID",
+        show_default=False,
+    ),
+    miner_evm: str | None = typer.Option(
+        None,
+        "--miner-evm",
+        help="EVM address that signed the LockProof payload.",
+        prompt="Miner EVM address",
+        show_default=False,
+    ),
+    password: str | None = typer.Option(
+        None,
+        "--pwd",
+        help="Pair password used when signing the LockProof payload.",
+        prompt="Pair password (0x...)",
+        show_default=False,
+    ),
+    signature: str | None = typer.Option(
+        None,
+        "--signature",
+        help="Hex EIP-712 signature.",
+        prompt="EIP-712 signature (0x...)",
+        show_default=False,
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit the verifier response as JSON."
     ),
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
+    assert chain is not None
+    assert vault is not None
+    assert tx is not None
+    assert amount is not None
+    assert hotkey is not None
+    assert slot is not None
+    assert miner_evm is not None
+    assert password is not None
+    assert signature is not None
+
     slot_id = str(slot)
     payload = _submit_lock_proof_payload(
         chain=chain,
@@ -499,28 +607,47 @@ def prove_lock(
 
 @app.command("claim-deposit")
 def claim_deposit(
-    chain: int = typer.Option(
-        ..., "--chain", help="EVM chain ID for the vault transaction."
+    chain: int | None = typer.Option(
+        None, "--chain", prompt="Chain ID", show_default=False
     ),
-    vault: str = typer.Option(..., "--vault", help="Vault contract address."),
-    tx: str = typer.Option(
-        ..., "--tx", help="Transaction hash for the LockCreated event."
+    vault: str | None = typer.Option(
+        None, "--vault", prompt="Vault contract address", show_default=False
     ),
-    amount: int = typer.Option(..., "--amount", help="Lock amount in wei."),
-    hotkey: str = typer.Option(..., "--hotkey", help="Bittensor hotkey SS58 address."),
-    slot: int = typer.Option(..., "--slot", help="Subnet UID assigned to the miner."),
-    miner_evm: str = typer.Option(
-        ..., "--miner-evm", help="EVM address that signed the LockProof payload."
+    tx: str | None = typer.Option(
+        None, "--tx", prompt="Transaction hash", show_default=False
     ),
-    password: str = typer.Option(
-        ..., "--pwd", help="Pair password used when signing the LockProof payload."
+    amount: int | None = typer.Option(
+        None, "--amount", prompt="Lock amount (wei)", show_default=False
     ),
-    signature: str = typer.Option(..., "--signature", help="Hex EIP-712 signature."),
+    hotkey: str | None = typer.Option(
+        None, "--hotkey", prompt="Hotkey SS58 address", show_default=False
+    ),
+    slot: int | None = typer.Option(
+        None, "--slot", prompt="Slot UID", show_default=False
+    ),
+    miner_evm: str | None = typer.Option(
+        None, "--miner-evm", prompt="Miner EVM address", show_default=False
+    ),
+    password: str | None = typer.Option(
+        None, "--pwd", prompt="Pair password (0x...)", show_default=False
+    ),
+    signature: str | None = typer.Option(
+        None, "--signature", prompt="EIP-712 signature (0x...)", show_default=False
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit the verifier response as JSON."
     ),
 ) -> None:
     """Alias for prove-lock for deposit-first workflows."""
+    assert chain is not None
+    assert vault is not None
+    assert tx is not None
+    assert amount is not None
+    assert hotkey is not None
+    assert slot is not None
+    assert miner_evm is not None
+    assert password is not None
+    assert signature is not None
     prove_lock(
         chain=chain,
         vault=vault,
