@@ -17,7 +17,8 @@ dependencies = [
   "python-dotenv>=1.0",
   "bittensor>=9.12.2",
   "pydantic>=2.6,<3",
-  "fiber @ git+https://github.com/rayonlabs/fiber.git@7fe17fcabcfeccb081b7b2e150295132d441c557",
+  "pydantic-settings>=2.6,<3",
+  "torch>=2.2,<3",
 ]
 
 dynamic = ["entry-points"]

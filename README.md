@@ -1,8 +1,8 @@
 # Cartha CLI
 
 Miner-facing command line tool for the Cartha subnet. The CLI wraps Bittensor wallet operations,
-subnet registration, verifier interactions, and signature helpers using Fiber so miners can prove
-hotkey ownership and submit LockProofs without touching raw cryptography.
+subnet registration, verifier interactions, and signature helpers so miners can prove hotkey
+ownership and submit LockProofs without touching raw cryptography.
 
 ## Requirements
 

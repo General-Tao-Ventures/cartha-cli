@@ -15,4 +15,4 @@ typecheck:
 	$(UV) run mypy cartha_cli
 
 test: lint typecheck
-	$(UV) run pytest
+	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 $(UV) run pytest
