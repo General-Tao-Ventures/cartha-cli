@@ -28,6 +28,7 @@ class RegistrationResult:
     status: str
     success: bool
     uid: Optional[int]
+    hotkey: str
 
 
 def register_hotkey(
@@ -53,7 +54,7 @@ def register_hotkey(
     if subtensor.is_hotkey_registered(hotkey_ss58, netuid=netuid):
         neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
         uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-        return RegistrationResult(status="already", success=True, uid=uid)
+        return RegistrationResult(status="already", success=True, uid=uid, hotkey=hotkey_ss58)
 
     if burned:
         ok = subtensor.burned_register(
@@ -77,11 +78,11 @@ def register_hotkey(
         status = "pow"
 
     if not ok:
-        return RegistrationResult(status=status, success=False, uid=None)
+        return RegistrationResult(status=status, success=False, uid=None, hotkey=hotkey_ss58)
 
     neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
     uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-    return RegistrationResult(status=status, success=True, uid=uid)
+    return RegistrationResult(status=status, success=True, uid=uid, hotkey=hotkey_ss58)
 
 
 __all__ = ["get_subtensor", "get_wallet", "register_hotkey", "RegistrationResult"]

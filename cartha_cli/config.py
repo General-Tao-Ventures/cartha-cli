@@ -11,8 +11,10 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     verifier_url: str = Field("http://127.0.0.1:8000", alias="CARTHA_VERIFIER_URL")
+    verifier_cli_token: str | None = Field(None, alias="CARTHA_VERIFIER_CLI_TOKEN")
     network: str = Field("finney", alias="CARTHA_NETWORK")
     netuid: int = Field(35, alias="CARTHA_NETUID")
+    evm_private_key: str | None = Field(None, alias="CARTHA_EVM_PK")
 
     model_config = {
         "env_file": ".env",

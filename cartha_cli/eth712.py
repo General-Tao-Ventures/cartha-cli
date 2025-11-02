@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from eth_account.messages import encode_structured_data
+from hexbytes import HexBytes
 
 
 @dataclass
@@ -26,6 +27,11 @@ class LockProofMessage:
             "chainId": self.chain_id,
         }
         types = {
+            "EIP712Domain": [
+                {"name": "name", "type": "string"},
+                {"name": "version", "type": "string"},
+                {"name": "chainId", "type": "uint256"},
+            ],
             "LockProof": [
                 {"name": "vaultAddress", "type": "address"},
                 {"name": "minerEvmAddress", "type": "address"},
@@ -43,9 +49,9 @@ class LockProofMessage:
             "minerHotkey": self.miner_hotkey,
             "slotUID": self.slot_uid,
             "chainId": self.chain_id,
-            "txHash": self.tx_hash,
+            "txHash": HexBytes(self.tx_hash),
             "amount": self.amount,
-            "pwd": self.password,
+            "pwd": HexBytes(self.password),
         }
         return {"domain": domain, "types": types, "primaryType": "LockProof", "message": message}
 
