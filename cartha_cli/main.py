@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import Any
 
 import bittensor as bt
@@ -83,6 +84,18 @@ def _handle_unexpected_exception(context: str, exc: Exception) -> None:
     if detail:
         message += f" ({detail})"
     _exit_with_error(message)
+
+
+def _usdc_to_base_units(value: str) -> int:
+    try:
+        decimal_value = Decimal(value.strip())
+    except (InvalidOperation, AttributeError) as exc:
+        _exit_with_error("Lock amount must be numeric.")
+        raise typer.Exit() from exc  # pragma: no cover
+    if decimal_value <= 0:
+        _exit_with_error("Lock amount must be positive.")
+    quantized = decimal_value.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
+    return int(quantized * Decimal(10**6))
 
 
 def _print_root_help() -> None:
@@ -628,8 +641,7 @@ def prove_lock(
     amount: int | None = typer.Option(
         None,
         "--amount",
-        help="Lock amount in wei.",
-        prompt="Lock amount (wei)",
+        help="Lock amount in base units (USDC * 1e6). When omitted you'll be prompted for a normalized USDC amount.",
         show_default=False,
     ),
     hotkey: str | None = typer.Option(
@@ -680,7 +692,8 @@ def prove_lock(
         if tx is None:
             tx = typer.prompt("Transaction hash")
         if amount is None:
-            amount = int(typer.prompt("Lock amount (wei)"))
+            normalized_input = typer.prompt("Lock amount in USDC (e.g. 250.5)", default="250")
+            amount = _usdc_to_base_units(normalized_input)
         if hotkey is None:
             hotkey = typer.prompt("Hotkey SS58 address")
         if slot is None:
@@ -705,6 +718,15 @@ def prove_lock(
             signature=signature,
         )
         _send_lock_proof(payload, json_output)
+        if not json_output:
+            human_amount = Decimal(payload["amount"]) / Decimal(10**6)
+            console.log(
+                f"[bold cyan]Amount submitted[/]: {human_amount.normalize()} USDC "
+                f"({payload['amount']} base units)"
+            )
+            console.log(
+                "[bold cyan]Reminder[/]: keep your pair password private to prevent USDC theft."
+            )
     except typer.Exit:
         raise
     except Exception as exc:
