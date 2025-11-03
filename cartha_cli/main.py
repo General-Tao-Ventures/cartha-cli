@@ -429,7 +429,7 @@ def register(
                 f"[bold green]Pair password[/] for {result.hotkey}/{slot_uid}: [yellow]{pair_pwd}[/]"
             )
             console.log(
-                "[bold orange]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+                "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
             )
         else:
             console.log(
@@ -525,7 +525,7 @@ def pair_status(
         console.print(JSON.from_data(sanitized))
         if password:
             console.log(
-                "[bold orange]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+                "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
             )
         return
 
@@ -542,7 +542,7 @@ def pair_status(
     console.print(table)
     if password:
         console.log(
-            "[bold orange]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+            "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
         )
 
 
