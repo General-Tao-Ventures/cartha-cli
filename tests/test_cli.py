@@ -1,10 +1,38 @@
 import json
 import sys
+import types
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
+
+class _StubKeypair:
+    def __init__(self, ss58_address: str | None = None):
+        self.ss58_address = ss58_address
+
+    def verify(self, message: bytes, signature: bytes) -> bool:  # pragma: no cover - stub
+        return True
+
+
+class _StubWeb3:
+    @staticmethod
+    def is_address(value: str) -> bool:
+        return True
+
+    @staticmethod
+    def to_checksum_address(value: str) -> str:
+        return value
+
+
+bt_stub = types.SimpleNamespace(
+    KeyFileError=Exception,
+    Keypair=_StubKeypair,
+    wallet=lambda *args, **kwargs: None,
+    subtensor=lambda *args, **kwargs: None,
+)
+sys.modules.setdefault("bittensor", bt_stub)
+sys.modules.setdefault("web3", types.SimpleNamespace(Web3=_StubWeb3))
 
 from cartha_cli.bt import RegistrationResult
 from cartha_cli.main import app
@@ -26,15 +54,12 @@ def test_register_command_success(monkeypatch):
     def fake_auth_payload(**kwargs):
         return {"message": "msg", "signature": "0xdead", "expires_at": 0}
 
-    captured = {}
-
-    def fake_request(**kwargs):
-        captured["mode"] = kwargs["mode"]
+    def fake_issue(**kwargs):
         return {"pwd": "0x" + "11" * 32}
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
     monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+    monkeypatch.setattr("cartha_cli.main.register_pair_password", fake_issue)
 
     result = runner.invoke(
         app,
@@ -54,7 +79,6 @@ def test_register_command_success(monkeypatch):
     assert "Registration success" in result.stdout
     assert "Registered UID: 10" in result.stdout
     assert "Pair password for bt1abc/10" in result.stdout
-    assert captured["mode"] == "password"
 
 
 def test_register_command_already(monkeypatch):

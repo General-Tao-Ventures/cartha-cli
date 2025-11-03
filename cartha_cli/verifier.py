@@ -118,6 +118,31 @@ def fetch_pair_password(
     )
 
 
+def register_pair_password(
+    *,
+    hotkey: str,
+    slot: str,
+    network: str,
+    netuid: int,
+    message: str,
+    signature: str,
+) -> Dict[str, Any]:
+    payload = {
+        "hotkey": hotkey,
+        "slot": slot,
+        "network": network,
+        "netuid": netuid,
+        "message": message,
+        "signature": signature,
+    }
+    return _request(
+        "POST",
+        "/v1/pair/password/register",
+        json_data=payload,
+        require_cli_token=True,
+    )
+
+
 def submit_lock_proof(payload: Dict[str, Any]) -> Dict[str, Any]:
     """Submit a lock proof to the verifier."""
     return _request(
@@ -127,4 +152,10 @@ def submit_lock_proof(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-__all__ = ["VerifierError", "fetch_pair_status", "fetch_pair_password", "submit_lock_proof"]
+__all__ = [
+    "VerifierError",
+    "fetch_pair_status",
+    "fetch_pair_password",
+    "register_pair_password",
+    "submit_lock_proof",
+]

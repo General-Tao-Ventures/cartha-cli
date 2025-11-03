@@ -22,6 +22,7 @@ from .verifier import (
     VerifierError,
     fetch_pair_password,
     fetch_pair_status,
+    register_pair_password,
     submit_lock_proof,
 )
 
@@ -190,9 +191,11 @@ def _build_pair_auth_payload(
     hotkey: str,
     wallet_name: str,
     wallet_hotkey: str,
+    skip_metagraph_check: bool = False,
 ) -> dict[str, Any]:
     wallet = _load_wallet(wallet_name, wallet_hotkey, hotkey)
-    _ensure_pair_registered(network=network, netuid=netuid, slot=slot, hotkey=hotkey)
+    if not skip_metagraph_check:
+        _ensure_pair_registered(network=network, netuid=netuid, slot=slot, hotkey=hotkey)
 
     timestamp = int(time.time())
     message = (
@@ -316,22 +319,45 @@ def register(
     if result.uid is not None:
         slot_uid = str(result.uid)
         console.log(f"[bold green]Registered UID[/]: {slot_uid}")
-        auth_payload = _build_pair_auth_payload(
-            network=network,
-            netuid=netuid,
-            slot=slot_uid,
-            hotkey=result.hotkey,
-            wallet_name=wallet_name,
-            wallet_hotkey=wallet_hotkey,
-        )
-        password_payload = _request_pair_status_or_password(
-            mode="password",
-            hotkey=result.hotkey,
-            slot=slot_uid,
-            network=network,
-            netuid=netuid,
-            auth_payload=auth_payload,
-        )
+        try:
+            auth_payload = _build_pair_auth_payload(
+                network=network,
+                netuid=netuid,
+                slot=slot_uid,
+                hotkey=result.hotkey,
+                wallet_name=wallet_name,
+                wallet_hotkey=wallet_hotkey,
+                skip_metagraph_check=True,
+            )
+        except typer.Exit:
+            # challenge build failed; already reported.
+            return
+
+        with console.status(
+            "[bold cyan]Verifying registration with Cartha verifier[/] (this can take ~30-60 seconds while the network confirms ownership)...",
+            spinner="dots",
+        ):
+            try:
+                password_payload = register_pair_password(
+                    hotkey=result.hotkey,
+                    slot=slot_uid,
+                    network=network,
+                    netuid=netuid,
+                    message=auth_payload["message"],
+                    signature=auth_payload["signature"],
+                )
+            except VerifierError as exc:
+                message = str(exc)
+                if exc.status_code == 504 or "timeout" in message.lower():
+                    console.log(
+                        "[bold yellow]Password generation timed out[/]: run 'cartha pair status' in ~1 minute to check once the verifier completes."
+                    )
+                else:
+                    console.log(
+                        f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha pair status' later to confirm."
+                    )
+                return
+
         pair_pwd = password_payload.get("pwd")
         if pair_pwd:
             console.log(
