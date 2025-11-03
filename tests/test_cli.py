@@ -230,7 +230,9 @@ def test_pair_status_command(monkeypatch):
     assert "active" in result.stdout
     assert "Password issued" in result.stdout
     assert "yes" in result.stdout
-    assert "0x22" not in result.stdout
+    assert "Pair password" in result.stdout
+    assert "0x22" in result.stdout
+    assert "Keep it safe" in result.stdout
 
 
 def test_pair_status_command_json(monkeypatch):
@@ -276,11 +278,13 @@ def test_pair_status_command_json(monkeypatch):
     assert result.exit_code == 0
     stdout = result.stdout
     json_start = stdout.find("{")
-    payload = json.loads(stdout[json_start:])
+    json_end = stdout.find("}\n", json_start)
+    payload = json.loads(stdout[json_start:json_end + 1])
     assert payload["state"] == "pending"
     assert payload["hotkey"] == "bt1xyz"
     assert payload["slot"] == "7"
-    assert "pwd" not in payload
+    assert payload["pwd"] == "0x" + "33" * 32
+    assert "Keep it safe" in stdout
 
 
 def test_prove_lock_command_success(monkeypatch):

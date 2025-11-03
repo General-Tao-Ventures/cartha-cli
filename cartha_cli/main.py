@@ -429,7 +429,7 @@ def register(
                 f"[bold green]Pair password[/] for {result.hotkey}/{slot_uid}: [yellow]{pair_pwd}[/]"
             )
             console.log(
-                "[bold yellow]Keep it safe[/]—eyes only. Exposure lets others steal your locked USDC deposit."
+                "[bold orange]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
             )
         else:
             console.log(
@@ -477,6 +477,7 @@ def pair_status(
 ) -> None:
     """Show the verifier state for a miner pair."""
     try:
+        console.log("[bold cyan]Validating miner UID:hotkey ownership...[/]")
         wallet = _load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
         slot_id = str(slot)
@@ -484,6 +485,7 @@ def pair_status(
             network=network, netuid=netuid, slot=slot_id, hotkey=hotkey
         )
 
+        console.log("[bold cyan]Signing hotkey ownership challenge...[/]")
         auth_payload = _build_pair_auth_payload(
             network=network,
             netuid=netuid,
@@ -492,14 +494,18 @@ def pair_status(
             wallet_name=wallet_name,
             wallet_hotkey=wallet_hotkey,
         )
-        status = _request_pair_status_or_password(
-            mode="status",
-            hotkey=hotkey,
-            slot=slot_id,
-            network=network,
-            netuid=netuid,
-            auth_payload=auth_payload,
-        )
+        with console.status(
+            "[bold cyan]Verifying ownership with Cartha verifier...[/]",
+            spinner="dots",
+        ):
+            status = _request_pair_status_or_password(
+                mode="status",
+                hotkey=hotkey,
+                slot=slot_id,
+                network=network,
+                netuid=netuid,
+                auth_payload=auth_payload,
+            )
     except bt.KeyFileError as exc:
         _handle_wallet_exception(
             wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
@@ -509,13 +515,18 @@ def pair_status(
     except Exception as exc:
         _handle_unexpected_exception("Unable to fetch pair status", exc)
 
-    sanitized = {k: v for k, v in status.items() if k != "pwd"}
+    sanitized = dict(status)
     sanitized.setdefault("state", "unknown")
     sanitized["hotkey"] = hotkey
     sanitized["slot"] = slot_id
+    password = sanitized.get("pwd")
 
     if json_output:
         console.print(JSON.from_data(sanitized))
+        if password:
+            console.log(
+                "[bold orange]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+            )
         return
 
     table = Table(title="Pair Status", show_header=False)
@@ -526,7 +537,13 @@ def pair_status(
     issued_at = sanitized.get("issued_at")
     if issued_at:
         table.add_row("Password issued at", issued_at)
+    if password:
+        table.add_row("Pair password", password)
     console.print(table)
+    if password:
+        console.log(
+            "[bold orange]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+        )
 
 
 def _submit_lock_proof_payload(
