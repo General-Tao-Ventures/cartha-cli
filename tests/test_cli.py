@@ -7,6 +7,11 @@ from typer.testing import CliRunner
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+
+class _StubKeyFileError(Exception):
+    pass
+
+
 class _StubKeypair:
     def __init__(self, ss58_address: str | None = None):
         self.ss58_address = ss58_address
@@ -26,7 +31,7 @@ class _StubWeb3:
 
 
 bt_stub = types.SimpleNamespace(
-    KeyFileError=Exception,
+    KeyFileError=_StubKeyFileError,
     Keypair=_StubKeypair,
     wallet=lambda *args, **kwargs: None,
     subtensor=lambda *args, **kwargs: None,
@@ -36,6 +41,7 @@ sys.modules.setdefault("web3", types.SimpleNamespace(Web3=_StubWeb3))
 
 from cartha_cli.bt import RegistrationResult
 from cartha_cli.main import app
+from cartha_cli import main as cli_main
 
 
 runner = CliRunner()
@@ -119,6 +125,63 @@ def test_register_command_failure(monkeypatch):
     )
     assert result.exit_code == 1
     assert "Registration failed" in result.stdout
+
+
+def test_register_command_wallet_error(monkeypatch):
+    def fake_register_hotkey(**kwargs):
+        raise cli_main.bt.KeyFileError("missing keyfile")
+
+    monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
+
+    result = runner.invoke(
+        app,
+        [
+            "register",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1abc",
+        ],
+    )
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "Unable to open coldkey 'cold' hotkey 'bt1abc'" in result.stdout
+
+
+def test_register_command_trace_unexpected(monkeypatch):
+    def fake_register_hotkey(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
+
+    # default: error handled without traceback
+    result = runner.invoke(
+        app,
+        [
+            "register",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1abc",
+        ],
+    )
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "Registration failed unexpectedly" in result.stdout
+
+    traced = runner.invoke(
+        app,
+        [
+            "--trace",
+            "register",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1abc",
+        ],
+    )
+    assert traced.exit_code != 0
+    assert isinstance(traced.exception, RuntimeError)
 
 
 def test_pair_status_command(monkeypatch):

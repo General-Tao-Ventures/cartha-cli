@@ -38,8 +38,51 @@ app = typer.Typer(
 )
 pair_app = typer.Typer(help="Pair status commands.")
 
-
 app.add_typer(pair_app, name="pair")
+
+_TRACE_ENABLED = False
+
+
+def _set_trace_enabled(enabled: bool) -> None:
+    global _TRACE_ENABLED
+    _TRACE_ENABLED = enabled
+
+
+def _trace_enabled() -> bool:
+    return _TRACE_ENABLED
+
+
+def _exit_with_error(message: str, code: int = 1) -> None:
+    console.log(f"[bold red]{message}[/]")
+    raise typer.Exit(code=code)
+
+
+def _handle_wallet_exception(
+    *,
+    wallet_name: str | None,
+    wallet_hotkey: str | None,
+    exc: Exception,
+) -> None:
+    detail = str(exc).strip()
+    name = wallet_name or "<unknown>"
+    hotkey = wallet_hotkey or "<unknown>"
+    message = (
+        f"Unable to open coldkey '{name}' hotkey '{hotkey}'. "
+        "Ensure the wallet exists, hotkey files are present, and the key is unlocked."
+    )
+    if detail:
+        message += f" ({detail})"
+    _exit_with_error(message)
+
+
+def _handle_unexpected_exception(context: str, exc: Exception) -> None:
+    if _trace_enabled():
+        raise
+    detail = str(exc).strip()
+    message = context
+    if detail:
+        message += f" ({detail})"
+    _exit_with_error(message)
 
 
 def _print_root_help() -> None:
@@ -95,11 +138,9 @@ def _print_root_help() -> None:
 
 def _log_endpoint_banner() -> None:
     if settings.verifier_url.startswith("http://127.0.0.1"):
-        console.log(
-            f"[bold cyan]Using local verifier endpoint[/]: {settings.verifier_url}"
-        )
+        console.log("[bold cyan]Using local verifier endpoint[/]")
     else:
-        console.log("[bold cyan]Using configured verifier endpoint[/]: Cartha")
+        console.log("[bold cyan]Using Cartha network verifier[/]")
 
 
 @app.callback(invoke_without_command=True)
@@ -112,8 +153,18 @@ def cli_root(
         help="Show this message and exit.",
         is_eager=True,
     ),
+    trace: bool = typer.Option(
+        False,
+        "--trace",
+        help="Show full stack traces when errors occur.",
+    ),
 ) -> None:
     """Top-level callback to provide rich help and endpoint banner."""
+    _set_trace_enabled(trace)
+    if ctx.obj is None:
+        ctx.obj = {}
+    ctx.obj["trace"] = trace
+
     if help_option:
         _print_root_help()
         raise typer.Exit()
@@ -165,20 +216,18 @@ def _load_wallet(
     try:
         wallet = get_wallet(wallet_name, wallet_hotkey)
     except bt.KeyFileError as exc:
-        console.log(
-            "[bold red]Missing hotkey files[/] "
-            f"for wallet '{wallet_name}/{wallet_hotkey}'. Import or create the wallet before retrying."
+        _handle_wallet_exception(
+            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
         )
-        raise typer.Exit(code=1) from exc
     except Exception as exc:  # pragma: no cover - defensive
-        console.log(f"[bold red]Failed to load wallet[/]: {exc}")
-        raise typer.Exit(code=1) from exc
+        _handle_unexpected_exception(
+            f"Failed to load wallet '{wallet_name}/{wallet_hotkey}'", exc
+        )
 
     if expected_hotkey and wallet.hotkey.ss58_address != expected_hotkey:
-        console.log(
-            "[bold red]Hotkey mismatch[/]: loaded wallet hotkey does not match the supplied address."
+        _exit_with_error(
+            "Hotkey mismatch: loaded wallet hotkey does not match the supplied address."
         )
-        raise typer.Exit(code=1)
 
     return wallet
 
@@ -294,14 +343,23 @@ def register(
         f"on netuid {netuid} (network={network})"
     )
 
-    result: RegistrationResult = register_hotkey(
-        network=network,
-        wallet_name=wallet_name,
-        hotkey_name=wallet_hotkey,
-        netuid=netuid,
-        burned=burned,
-        cuda=cuda,
-    )
+    try:
+        result: RegistrationResult = register_hotkey(
+            network=network,
+            wallet_name=wallet_name,
+            hotkey_name=wallet_hotkey,
+            netuid=netuid,
+            burned=burned,
+            cuda=cuda,
+        )
+    except bt.KeyFileError as exc:
+        _handle_wallet_exception(
+            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
+        )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _handle_unexpected_exception("Registration failed unexpectedly", exc)
 
     if result.status == "already":
         console.log(f"[bold yellow]Hotkey already registered[/]. UID: {result.uid}")
@@ -333,30 +391,37 @@ def register(
             # challenge build failed; already reported.
             return
 
-        with console.status(
-            "[bold cyan]Verifying registration with Cartha verifier[/] (this can take ~30-60 seconds while the network confirms ownership)...",
-            spinner="dots",
-        ):
-            try:
-                password_payload = register_pair_password(
-                    hotkey=result.hotkey,
-                    slot=slot_uid,
-                    network=network,
-                    netuid=netuid,
-                    message=auth_payload["message"],
-                    signature=auth_payload["signature"],
-                )
-            except VerifierError as exc:
-                message = str(exc)
-                if exc.status_code == 504 or "timeout" in message.lower():
-                    console.log(
-                        "[bold yellow]Password generation timed out[/]: run 'cartha pair status' in ~1 minute to check once the verifier completes."
+        try:
+            with console.status(
+                "[bold cyan]Verifying registration with Cartha verifier[/] (this can take ~30-60 seconds while the network confirms ownership)...",
+                spinner="dots",
+            ):
+                try:
+                    password_payload = register_pair_password(
+                        hotkey=result.hotkey,
+                        slot=slot_uid,
+                        network=network,
+                        netuid=netuid,
+                        message=auth_payload["message"],
+                        signature=auth_payload["signature"],
                     )
-                else:
-                    console.log(
-                        f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha pair status' later to confirm."
-                    )
-                return
+                except VerifierError as exc:
+                    message = str(exc)
+                    if exc.status_code == 504 or "timeout" in message.lower():
+                        console.log(
+                            "[bold yellow]Password generation timed out[/]: run 'cartha pair status' in ~1 minute to check once the verifier completes."
+                        )
+                    else:
+                        console.log(
+                            f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha pair status' later to confirm."
+                        )
+                    return
+        except typer.Exit:
+            raise
+        except Exception as exc:
+            _handle_unexpected_exception(
+                "Verifier password registration failed unexpectedly", exc
+            )
 
         pair_pwd = password_payload.get("pwd")
         if pair_pwd:
@@ -411,27 +476,38 @@ def pair_status(
     ),
 ) -> None:
     """Show the verifier state for a miner pair."""
-    wallet = _load_wallet(wallet_name, wallet_hotkey, None)
-    hotkey = wallet.hotkey.ss58_address
-    slot_id = str(slot)
-    _ensure_pair_registered(network=network, netuid=netuid, slot=slot_id, hotkey=hotkey)
+    try:
+        wallet = _load_wallet(wallet_name, wallet_hotkey, None)
+        hotkey = wallet.hotkey.ss58_address
+        slot_id = str(slot)
+        _ensure_pair_registered(
+            network=network, netuid=netuid, slot=slot_id, hotkey=hotkey
+        )
 
-    auth_payload = _build_pair_auth_payload(
-        network=network,
-        netuid=netuid,
-        slot=slot_id,
-        hotkey=hotkey,
-        wallet_name=wallet_name,
-        wallet_hotkey=wallet_hotkey,
-    )
-    status = _request_pair_status_or_password(
-        mode="status",
-        hotkey=hotkey,
-        slot=slot_id,
-        network=network,
-        netuid=netuid,
-        auth_payload=auth_payload,
-    )
+        auth_payload = _build_pair_auth_payload(
+            network=network,
+            netuid=netuid,
+            slot=slot_id,
+            hotkey=hotkey,
+            wallet_name=wallet_name,
+            wallet_hotkey=wallet_hotkey,
+        )
+        status = _request_pair_status_or_password(
+            mode="status",
+            hotkey=hotkey,
+            slot=slot_id,
+            network=network,
+            netuid=netuid,
+            auth_payload=auth_payload,
+        )
+    except bt.KeyFileError as exc:
+        _handle_wallet_exception(
+            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
+        )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _handle_unexpected_exception("Unable to fetch pair status", exc)
 
     sanitized = {k: v for k, v in status.items() if k != "pwd"}
     sanitized.setdefault("state", "unknown")
@@ -579,38 +655,43 @@ def prove_lock(
     ),
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
-    if chain is None:
-        chain = int(typer.prompt("Chain ID"))
-    if vault is None:
-        vault = typer.prompt("Vault contract address")
-    if tx is None:
-        tx = typer.prompt("Transaction hash")
-    if amount is None:
-        amount = int(typer.prompt("Lock amount (wei)"))
-    if hotkey is None:
-        hotkey = typer.prompt("Hotkey SS58 address")
-    if slot is None:
-        slot = int(typer.prompt("Slot UID"))
-    if miner_evm is None:
-        miner_evm = typer.prompt("Miner EVM address")
-    if password is None:
-        password = typer.prompt("Pair password (0x...)", hide_input=False)
-    if signature is None:
-        signature = typer.prompt("EIP-712 signature (0x...)")
+    try:
+        if chain is None:
+            chain = int(typer.prompt("Chain ID"))
+        if vault is None:
+            vault = typer.prompt("Vault contract address")
+        if tx is None:
+            tx = typer.prompt("Transaction hash")
+        if amount is None:
+            amount = int(typer.prompt("Lock amount (wei)"))
+        if hotkey is None:
+            hotkey = typer.prompt("Hotkey SS58 address")
+        if slot is None:
+            slot = int(typer.prompt("Slot UID"))
+        if miner_evm is None:
+            miner_evm = typer.prompt("Miner EVM address")
+        if password is None:
+            password = typer.prompt("Pair password (0x...)", hide_input=False)
+        if signature is None:
+            signature = typer.prompt("EIP-712 signature (0x...)")
 
-    slot_id = str(slot)
-    payload = _submit_lock_proof_payload(
-        chain=chain,
-        vault=vault,
-        tx_hash=tx,
-        amount=amount,
-        hotkey=hotkey,
-        slot=slot_id,
-        miner_evm=miner_evm,
-        password=password,
-        signature=signature,
-    )
-    _send_lock_proof(payload, json_output)
+        slot_id = str(slot)
+        payload = _submit_lock_proof_payload(
+            chain=chain,
+            vault=vault,
+            tx_hash=tx,
+            amount=amount,
+            hotkey=hotkey,
+            slot=slot_id,
+            miner_evm=miner_evm,
+            password=password,
+            signature=signature,
+        )
+        _send_lock_proof(payload, json_output)
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _handle_unexpected_exception("Lock proof submission failed", exc)
 
 
 @app.command("claim-deposit")
