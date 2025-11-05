@@ -693,7 +693,27 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
     try:
         response = submit_lock_proof(payload)
     except VerifierError as exc:
-        console.log(f"[bold red]Lock proof rejected[/]: {exc}")
+        error_msg = str(exc)
+        
+        # Check for EVM address conflict (409 CONFLICT)
+        if (
+            exc.status_code == 409
+            and ("already claimed" in error_msg.lower() or "claimed by another identity" in error_msg.lower())
+        ):
+            console.log("[bold red]Lock proof rejected[/]: Multiple hotkeys cannot claim the same EVM address")
+            evm_addr = payload.get("minerEvmAddress", "unknown")
+            console.log(
+                "[yellow]Error details[/]: "
+                f"This EVM wallet ({evm_addr}) has already been linked "
+                f"to another hotkey in this epoch. Each EVM wallet position can only be claimed by "
+                f"one hotkey per epoch."
+            )
+            console.log(
+                "[dim]Tip[/]: If you want to link this deposit to a different hotkey, you must wait "
+                "until the next epoch or use a different EVM wallet."
+            )
+        else:
+            console.log(f"[bold red]Lock proof rejected[/]: {error_msg}")
         raise typer.Exit(code=1)
 
     if json_output:
