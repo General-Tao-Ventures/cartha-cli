@@ -130,7 +130,9 @@ def _print_root_help() -> None:
     console.print(commands)
     console.print()
 
-    env_table = Table(title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
+    env_table = Table(
+        title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False
+    )
     env_table.add_row(
         "CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)"
     )
@@ -257,7 +259,9 @@ def _build_pair_auth_payload(
 ) -> dict[str, Any]:
     wallet = _load_wallet(wallet_name, wallet_hotkey, hotkey)
     if not skip_metagraph_check:
-        _ensure_pair_registered(network=network, netuid=netuid, slot=slot, hotkey=hotkey)
+        _ensure_pair_registered(
+            network=network, netuid=netuid, slot=slot, hotkey=hotkey
+        )
 
     timestamp = int(time.time())
     message = (
@@ -574,9 +578,7 @@ def pair_status(
                     "[bold yellow]Password generation timed out[/]: run 'cartha pair status' again in ~1 minute."
                 )
             else:
-                console.log(
-                    f"[bold red]Password generation failed[/]: {message}"
-                )
+                console.log(f"[bold red]Password generation failed[/]: {message}")
             raise typer.Exit(code=1)
         except typer.Exit:
             raise
@@ -601,18 +603,15 @@ def pair_status(
                     auth_payload=auth_payload,
                 )
         except VerifierError as exc:
-            console.log(
-                f"[bold yellow]Unable to refresh pair status[/]: {exc}"
-            )
+            console.log(f"[bold yellow]Unable to refresh pair status[/]: {exc}")
             status = initial_status
             if state == "unknown":
                 status["state"] = "pending"
             status["has_pwd"] = bool(password_payload and password_payload.get("pwd"))
             if password_payload:
                 status["pwd"] = password_payload.get("pwd")
-                status["issued_at"] = (
-                    password_payload.get("issued_at")
-                    or status.get("issued_at")
+                status["issued_at"] = password_payload.get("issued_at") or status.get(
+                    "issued_at"
                 )
 
     sanitized = dict(status)
@@ -694,13 +693,15 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
         response = submit_lock_proof(payload)
     except VerifierError as exc:
         error_msg = str(exc)
-        
+
         # Check for EVM address conflict (409 CONFLICT)
-        if (
-            exc.status_code == 409
-            and ("already claimed" in error_msg.lower() or "claimed by another identity" in error_msg.lower())
+        if exc.status_code == 409 and (
+            "already claimed" in error_msg.lower()
+            or "claimed by another identity" in error_msg.lower()
         ):
-            console.log("[bold red]Lock proof rejected[/]: Multiple hotkeys cannot claim the same EVM address")
+            console.log(
+                "[bold red]Lock proof rejected[/]: Multiple hotkeys cannot claim the same EVM address"
+            )
             evm_addr = payload.get("minerEvmAddress", "unknown")
             console.log(
                 "[yellow]Error details[/]: "
@@ -799,7 +800,9 @@ def prove_lock(
         if tx is None:
             tx = typer.prompt("Transaction hash")
         if amount is None:
-            normalized_input = typer.prompt("Lock amount in USDC (e.g. 250.5)", default="250")
+            normalized_input = typer.prompt(
+                "Lock amount in USDC (e.g. 250.5)", default="250"
+            )
             amount = _usdc_to_base_units(normalized_input)
         if hotkey is None:
             hotkey = typer.prompt("Hotkey SS58 address")
