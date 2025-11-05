@@ -218,7 +218,7 @@ def _ensure_pair_registered(
     registered_hotkey = metagraph.hotkeys[slot_index]
     if registered_hotkey != hotkey:
         console.log(
-            f"[bold red]UID mismatch[/]: slot {slot} belongs to [yellow]{registered_hotkey}[/], not {hotkey}."
+            f"[bold red]UID mismatch[/]: slot {slot} belongs to a different hotkey, not {hotkey}. Please verify your inputs."
         )
         raise typer.Exit(code=1)
 
