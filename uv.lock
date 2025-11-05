@@ -259,6 +259,13 @@ dev = [
     { name = "ruff" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "mypy" },
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "bittensor", specifier = ">=9.12.2" },
@@ -275,6 +282,13 @@ requires-dist = [
     { name = "web3", specifier = ">=6.11,<7" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "mypy", specifier = ">=1.9" },
+    { name = "pytest", specifier = ">=8.2" },
+    { name = "ruff", specifier = ">=0.4" },
+]
 
 [[package]]
 name = "certifi"

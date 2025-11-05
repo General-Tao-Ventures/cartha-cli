@@ -528,6 +528,93 @@ def pair_status(
     except Exception as exc:
         _handle_unexpected_exception("Unable to fetch pair status", exc)
 
+    initial_status = dict(status)
+    password_payload: dict[str, Any] | None = None
+
+    existing_pwd = initial_status.get("pwd")
+    state = initial_status.get("state") or "unknown"
+    has_pwd_flag = initial_status.get("has_pwd") or bool(existing_pwd)
+
+    needs_password = state in ("unknown", "pending") and not json_output
+    if has_pwd_flag:
+        needs_password = False
+
+    if needs_password:
+        if state == "unknown":
+            console.log(
+                "[bold yellow]Verifier has no password record for this slot yet.[/]"
+            )
+        else:
+            console.log(
+                "[bold yellow]Pair is registered but no verifier password has been issued yet.[/]"
+            )
+        if not typer.confirm("Generate a password now?", default=True):
+            console.log(
+                "[bold yellow]Password generation skipped. Run this command again whenever you're ready.[/]"
+            )
+            raise typer.Exit(code=0)
+
+        try:
+            with console.status(
+                "[bold cyan]Requesting password issuance from Cartha verifier...[/]",
+                spinner="dots",
+            ):
+                password_payload = register_pair_password(
+                    hotkey=hotkey,
+                    slot=slot_id,
+                    network=network,
+                    netuid=netuid,
+                    message=auth_payload["message"],
+                    signature=auth_payload["signature"],
+                )
+        except VerifierError as exc:
+            message = str(exc)
+            if exc.status_code == 504 or "timeout" in message.lower():
+                console.log(
+                    "[bold yellow]Password generation timed out[/]: run 'cartha pair status' again in ~1 minute."
+                )
+            else:
+                console.log(
+                    f"[bold red]Password generation failed[/]: {message}"
+                )
+            raise typer.Exit(code=1)
+        except typer.Exit:
+            raise
+        except Exception as exc:
+            _handle_unexpected_exception(
+                "Verifier password generation failed unexpectedly", exc
+            )
+
+        console.log("[bold green]Pair password issued.[/]")
+
+        try:
+            with console.status(
+                "[bold cyan]Refreshing verifier status...[/]",
+                spinner="dots",
+            ):
+                status = _request_pair_status_or_password(
+                    mode="status",
+                    hotkey=hotkey,
+                    slot=slot_id,
+                    network=network,
+                    netuid=netuid,
+                    auth_payload=auth_payload,
+                )
+        except VerifierError as exc:
+            console.log(
+                f"[bold yellow]Unable to refresh pair status[/]: {exc}"
+            )
+            status = initial_status
+            if state == "unknown":
+                status["state"] = "pending"
+            status["has_pwd"] = bool(password_payload and password_payload.get("pwd"))
+            if password_payload:
+                status["pwd"] = password_payload.get("pwd")
+                status["issued_at"] = (
+                    password_payload.get("issued_at")
+                    or status.get("issued_at")
+                )
+
     sanitized = dict(status)
     sanitized.setdefault("state", "unknown")
     sanitized["hotkey"] = hotkey
