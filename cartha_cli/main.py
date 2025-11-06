@@ -354,11 +354,86 @@ def register(
     assert wallet_name is not None  # nosec - enforced by Typer prompt
     assert wallet_hotkey is not None  # nosec - enforced by Typer prompt
 
-    console.log(
-        "[bold white]Registering[/] "
-        f"coldkey [cyan]{wallet_name}[/] hotkey [yellow]{wallet_hotkey}[/] "
-        f"on netuid {netuid} (network={network})"
-    )
+    # Initialize subtensor and wallet to get info before registration
+    try:
+        subtensor = get_subtensor(network)
+        wallet = get_wallet(wallet_name, wallet_hotkey)
+    except bt.KeyFileError as exc:
+        _handle_wallet_exception(
+            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
+        )
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        _handle_unexpected_exception("Failed to initialize wallet/subtensor", exc)
+
+    hotkey_ss58 = wallet.hotkey.ss58_address
+    coldkey_ss58 = wallet.coldkeypub.ss58_address
+
+    # Check if already registered
+    if subtensor.is_hotkey_registered(hotkey_ss58, netuid=netuid):
+        neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
+        uid = (
+            None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
+        )
+        if uid is not None:
+            console.log(f"[bold yellow]Hotkey already registered[/]. UID: {uid}")
+            return
+
+    # Get registration cost and balance
+    registration_cost = None
+    balance = None
+
+    if burned:
+        try:
+            cost_obj = subtensor.get_burn_cost(netuid=netuid)
+            # Convert Balance object to float using .tao property
+            registration_cost = (
+                cost_obj.tao if hasattr(cost_obj, "tao") else float(cost_obj)
+            )
+        except Exception:
+            pass
+
+    try:
+        balance_obj = subtensor.get_balance(coldkey_ss58)
+        # Convert Balance object to float using .tao property
+        balance = balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
+    except Exception:
+        pass
+
+    # Display registration summary table (like btcli)
+    console.log(f"\n[bold]Using the wallet path from config:[/] {wallet.path}")
+
+    summary_table = Table(title="Registration Summary")
+    summary_table.add_column("Field", style="cyan")
+    summary_table.add_column("Value", style="yellow")
+
+    summary_table.add_row("Netuid", str(netuid))
+    summary_table.add_row("Symbol", "" if burned else "PoW")
+    if registration_cost is not None:
+        # registration_cost is already converted to float above
+        summary_table.add_row("Cost (τ)", f"τ {registration_cost:.4f}")
+    summary_table.add_row("Hotkey", hotkey_ss58)
+    summary_table.add_row("Coldkey", coldkey_ss58)
+    summary_table.add_row("Network", network)
+
+    console.print(summary_table)
+
+    # Display balance and cost (already converted to float above)
+    if balance is not None:
+        console.log(f"\n[bold]Your balance is:[/] {balance:.4f} τ")
+
+    if registration_cost is not None:
+        console.log(
+            f"[bold]The cost to register by recycle is[/] {registration_cost:.4f} τ"
+        )
+
+    # Confirmation prompt
+    if not typer.confirm("\nDo you want to continue?", default=False):
+        console.log("[bold yellow]Registration cancelled.[/]")
+        raise typer.Exit(code=0)
+
+    console.log("\n[bold cyan]Registering...[/]")
 
     try:
         result: RegistrationResult = register_hotkey(
@@ -386,14 +461,32 @@ def register(
         console.log("[bold red]Registration failed.[/]")
         raise typer.Exit(code=1)
 
+    # Display extrinsic if available
+    if result.extrinsic:
+        console.log(
+            f"[bold green]✔ Your extrinsic has been included as[/] [cyan]{result.extrinsic}[/]"
+        )
+
+    # Display balance update if available (already converted to float in register_hotkey)
+    if result.balance_before is not None and result.balance_after is not None:
+        console.log(
+            f"[bold]Balance:[/] {result.balance_before:.4f} τ -> {result.balance_after:.4f} τ"
+        )
+
+    # Display success message with UID
     if result.status == "burned":
-        console.log("[bold green]Burned registration success.[/]")
+        console.log(
+            "[bold green]✔ Registered on netuid[/] "
+            f"[cyan]{netuid}[/] [bold green]with UID[/] [cyan]{result.uid}[/]"
+        )
     else:
-        console.log("[bold green]Registration success.[/]")
+        console.log(
+            "[bold green]✔ Registered on netuid[/] "
+            f"[cyan]{netuid}[/] [bold green]with UID[/] [cyan]{result.uid}[/]"
+        )
 
     if result.uid is not None:
         slot_uid = str(result.uid)
-        console.log(f"[bold green]Registered UID[/]: {slot_uid}")
         try:
             auth_payload = _build_pair_auth_payload(
                 network=network,
@@ -632,6 +725,17 @@ def pair_status(
     table.add_row("Hotkey", hotkey)
     table.add_row("Slot UID", slot_id)
     table.add_row("State", sanitized["state"])
+
+    # Show verified lock amount for verified/active states
+    state = sanitized.get("state", "").lower()
+    if state in ("verified", "active"):
+        verified_amount_usdc = sanitized.get("verified_lock_amount_usdc")
+        verified_amount_base = sanitized.get("verified_lock_amount_base_units")
+        if verified_amount_usdc is not None:
+            # Format amount nicely without scientific notation
+            amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
+            table.add_row("Verified lock amount", f"{amount_str} USDC")
+
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
     if issued_at:
@@ -746,10 +850,10 @@ def prove_lock(
         prompt="Transaction hash",
         show_default=False,
     ),
-    amount: int | None = typer.Option(
+    amount: str | None = typer.Option(
         None,
         "--amount",
-        help="Lock amount in base units (USDC * 1e6). When omitted you'll be prompted for a normalized USDC amount.",
+        help="Lock amount in USDC (e.g. 250.5). Auto-detects if normalized USDC or base units (>1e9). When omitted you'll be prompted.",
         show_default=False,
     ),
     hotkey: str | None = typer.Option(
@@ -803,7 +907,20 @@ def prove_lock(
             normalized_input = typer.prompt(
                 "Lock amount in USDC (e.g. 250.5)", default="250"
             )
-            amount = _usdc_to_base_units(normalized_input)
+            amount_base_units = _usdc_to_base_units(normalized_input)
+        else:
+            # Auto-detect: if amount as int would be >= 1e9, assume base units
+            # Otherwise, treat as normalized USDC
+            try:
+                amount_as_int = int(float(amount))
+                if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
+                    amount_base_units = amount_as_int
+                else:
+                    # Treat as normalized USDC
+                    amount_base_units = _usdc_to_base_units(amount)
+            except (ValueError, InvalidOperation):
+                # If not a valid number, try treating as normalized USDC
+                amount_base_units = _usdc_to_base_units(amount)
         if hotkey is None:
             hotkey = typer.prompt("Hotkey SS58 address")
         if slot is None:
@@ -820,7 +937,7 @@ def prove_lock(
             chain=chain,
             vault=vault,
             tx_hash=tx,
-            amount=amount,
+            amount=amount_base_units,
             hotkey=hotkey,
             slot=slot_id,
             miner_evm=miner_evm,
@@ -830,8 +947,10 @@ def prove_lock(
         _send_lock_proof(payload, json_output)
         if not json_output:
             human_amount = Decimal(payload["amount"]) / Decimal(10**6)
+            # Format amount nicely without scientific notation
+            amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
             console.log(
-                f"[bold cyan]Amount submitted[/]: {human_amount.normalize()} USDC "
+                f"[bold cyan]Amount submitted[/]: {amount_str} USDC "
                 f"({payload['amount']} base units)"
             )
             console.log(

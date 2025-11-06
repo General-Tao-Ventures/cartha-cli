@@ -29,6 +29,9 @@ class RegistrationResult:
     success: bool
     uid: Optional[int]
     hotkey: str
+    extrinsic: Optional[str] = None  # Extrinsic hash (e.g., "5759123-5")
+    balance_before: Optional[float] = None  # Balance before registration
+    balance_after: Optional[float] = None  # Balance after registration
 
 
 def register_hotkey(
@@ -56,12 +59,34 @@ def register_hotkey(
         uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
         return RegistrationResult(status="already", success=True, uid=uid, hotkey=hotkey_ss58)
 
+    # Get balance before registration
+    balance_before = None
+    balance_after = None
+    extrinsic = None
+    
+    try:
+        balance_obj = subtensor.get_balance(wallet.coldkeypub.ss58_address)
+        # Convert Balance object to float using .tao property
+        balance_before = balance_obj.tao if hasattr(balance_obj, 'tao') else float(balance_obj)
+    except Exception:
+        pass  # Balance may not be available, continue anyway
+
     if burned:
-        ok = subtensor.burned_register(
+        # burned_register returns (success, block_info) or just success
+        registration_result = subtensor.burned_register(
             wallet=wallet,
             netuid=netuid,
             wait_for_finalization=wait_for_finalization,
         )
+        
+        # Handle both return types: bool or (bool, message)
+        if isinstance(registration_result, tuple):
+            ok, message = registration_result
+            if isinstance(message, str) and message:
+                extrinsic = message
+        else:
+            ok = registration_result
+        
         status = "burned"
     else:
         ok = subtensor.register(
@@ -76,13 +101,42 @@ def register_hotkey(
             log_verbose=False,
         )
         status = "pow"
+        if isinstance(ok, tuple) and len(ok) == 2:
+            ok, message = ok
+            if isinstance(message, str):
+                extrinsic = message
 
     if not ok:
-        return RegistrationResult(status=status, success=False, uid=None, hotkey=hotkey_ss58)
+        return RegistrationResult(
+            status=status, 
+            success=False, 
+            uid=None, 
+            hotkey=hotkey_ss58,
+            balance_before=balance_before,
+            balance_after=balance_after,
+            extrinsic=extrinsic
+        )
+
+    # Get balance after registration
+    try:
+        balance_obj = subtensor.get_balance(wallet.coldkeypub.ss58_address)
+        # Convert Balance object to float using .tao property
+        balance_after = balance_obj.tao if hasattr(balance_obj, 'tao') else float(balance_obj)
+    except Exception:
+        pass
 
     neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
     uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-    return RegistrationResult(status=status, success=True, uid=uid, hotkey=hotkey_ss58)
+    
+    return RegistrationResult(
+        status=status, 
+        success=True, 
+        uid=uid, 
+        hotkey=hotkey_ss58,
+        balance_before=balance_before,
+        balance_after=balance_after,
+        extrinsic=extrinsic
+    )
 
 
 __all__ = ["get_subtensor", "get_wallet", "register_hotkey", "RegistrationResult"]
