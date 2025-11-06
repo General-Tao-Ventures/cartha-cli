@@ -212,20 +212,33 @@ def _ensure_pair_registered(
     slot: str,
     hotkey: str,
 ) -> None:
-    subtensor = get_subtensor(network)
-    metagraph = subtensor.metagraph(netuid)
-    slot_index = int(slot)
-    if slot_index < 0 or slot_index >= len(metagraph.hotkeys):
-        console.print(
-            f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid})."
-        )
-        raise typer.Exit(code=1)
-    registered_hotkey = metagraph.hotkeys[slot_index]
-    if registered_hotkey != hotkey:
-        console.print(
-            f"[bold red]UID mismatch[/]: slot {slot} belongs to a different hotkey, not {hotkey}. Please verify your inputs."
-        )
-        raise typer.Exit(code=1)
+    try:
+        subtensor = get_subtensor(network)
+        metagraph = subtensor.metagraph(netuid)
+        slot_index = int(slot)
+        if slot_index < 0 or slot_index >= len(metagraph.hotkeys):
+            console.print(
+                f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid})."
+            )
+            raise typer.Exit(code=1)
+        registered_hotkey = metagraph.hotkeys[slot_index]
+        if registered_hotkey != hotkey:
+            console.print(
+                f"[bold red]UID mismatch[/]: slot {slot} belongs to a different hotkey, not {hotkey}. Please verify your inputs."
+            )
+            raise typer.Exit(code=1)
+    except Exception as exc:
+        error_msg = str(exc)
+        if "nodename" in error_msg.lower() or "servname" in error_msg.lower():
+            console.print(
+                f"[bold red]Network error[/]: Unable to connect to Bittensor {network} network: {error_msg}"
+            )
+            console.print(
+                "[yellow]This might be a DNS/network connectivity issue. Please check your internet connection.[/]"
+            )
+            raise typer.Exit(code=1)
+        # Re-raise other exceptions as-is
+        raise
 
 
 def _load_wallet(

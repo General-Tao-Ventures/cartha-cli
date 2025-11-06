@@ -30,18 +30,21 @@ def _request(
     json_data: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
     headers: Dict[str, str] = {"Accept": "application/json"}
+    url = _build_url(path)
 
     try:
         response = requests.request(
             method,
-            _build_url(path),
+            url,
             params=params,
             json=json_data,
             headers=headers,
             timeout=10,
         )
     except requests.RequestException as exc:  # pragma: no cover - network failure
-        raise VerifierError(f"Failed to reach verifier: {exc}") from exc
+        # Provide more context about the failed URL
+        error_msg = f"Failed to reach verifier at {url}: {exc}"
+        raise VerifierError(error_msg) from exc
 
     try:
         data = response.json()
