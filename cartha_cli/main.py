@@ -36,7 +36,7 @@ from .verifier import (
 CHALLENGE_PREFIX = "cartha-pair-auth"
 CHALLENGE_TTL_SECONDS = 120
 
-console = Console(log_time_format="[%Y-%m-%d %H:%M:%S]")
+console = Console()
 
 
 app = typer.Typer(
@@ -60,7 +60,7 @@ def _trace_enabled() -> bool:
 
 
 def _exit_with_error(message: str, code: int = 1) -> None:
-    console.log(f"[bold red]{message}[/]")
+    console.print(f"[bold red]{message}[/]")
     raise typer.Exit(code=code)
 
 
@@ -156,9 +156,9 @@ def _print_root_help() -> None:
 
 def _log_endpoint_banner() -> None:
     if settings.verifier_url.startswith("http://127.0.0.1"):
-        console.log("[bold cyan]Using local verifier endpoint[/]")
+        console.print("[bold cyan]Using local verifier endpoint[/]")
     else:
-        console.log("[bold cyan]Using Cartha network verifier[/]")
+        console.print("[bold cyan]Using Cartha network verifier[/]")
 
 
 @app.callback(invoke_without_command=True)
@@ -200,9 +200,9 @@ def version() -> None:
     from importlib.metadata import PackageNotFoundError, version
 
     try:
-        console.log(f"[bold white]cartha-cli[/] {version('cartha-cli')}")
+        console.print(f"[bold white]cartha-cli[/] {version('cartha-cli')}")
     except PackageNotFoundError:  # pragma: no cover
-        console.log("[bold white]cartha-cli[/] 0.0.0")
+        console.print("[bold white]cartha-cli[/] 0.0.0")
 
 
 def _ensure_pair_registered(
@@ -216,13 +216,13 @@ def _ensure_pair_registered(
     metagraph = subtensor.metagraph(netuid)
     slot_index = int(slot)
     if slot_index < 0 or slot_index >= len(metagraph.hotkeys):
-        console.log(
+        console.print(
             f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid})."
         )
         raise typer.Exit(code=1)
     registered_hotkey = metagraph.hotkeys[slot_index]
     if registered_hotkey != hotkey:
-        console.log(
+        console.print(
             f"[bold red]UID mismatch[/]: slot {slot} belongs to a different hotkey, not {hotkey}. Please verify your inputs."
         )
         raise typer.Exit(code=1)
@@ -276,12 +276,12 @@ def _build_pair_auth_payload(
 
     verifier_keypair = bt.Keypair(ss58_address=hotkey)
     if not verifier_keypair.verify(message_bytes, signature_bytes):
-        console.log("[bold red]Unable to verify the ownership signature locally.[/]")
+        console.print("[bold red]Unable to verify the ownership signature locally.[/]")
         raise typer.Exit(code=1)
 
     expires_at = timestamp + CHALLENGE_TTL_SECONDS
     expiry_time = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
-    console.log(
+    console.print(
         "[bold green]Ownership challenge signed[/] "
         f"(expires in {CHALLENGE_TTL_SECONDS}s at {expiry_time})."
     )
@@ -316,7 +316,7 @@ def _request_pair_status_or_password(
         if mode == "password":
             return fetch_pair_password(**request_kwargs)
     except VerifierError as exc:
-        console.log(f"[bold red]Verifier request failed[/]: {exc}")
+        console.print(f"[bold red]Verifier request failed[/]: {exc}")
         raise typer.Exit(code=1)
     raise RuntimeError(f"Unknown mode {mode}")  # pragma: no cover
 
@@ -380,7 +380,7 @@ def register(
             None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
         )
         if uid is not None:
-            console.log(f"[bold yellow]Hotkey already registered[/]. UID: {uid}")
+            console.print(f"[bold yellow]Hotkey already registered[/]. UID: {uid}")
             return
 
     # Get registration cost and balance
@@ -392,7 +392,7 @@ def register(
             registration_cost = get_burn_cost(network, netuid)
         except Exception as exc:
             # Log warning but continue - cost may not be available on all networks
-            console.log(
+            console.print(
                 f"[bold yellow]Warning: Could not fetch registration cost[/]: {exc}"
             )
 
@@ -404,7 +404,7 @@ def register(
         pass
 
     # Display registration summary table (like btcli)
-    console.log(f"\n[bold]Using the wallet path from config:[/] {wallet.path}")
+    console.print(f"[bold]Using the wallet path from config:[/] {wallet.path}")
 
     summary_table = Table(title="Registration Summary")
     summary_table.add_column("Field", style="cyan")
@@ -424,19 +424,19 @@ def register(
 
     # Display balance and cost (already converted to float above)
     if balance is not None:
-        console.log(f"\n[bold]Your balance is:[/] {balance:.4f} τ")
+        console.print(f"\n[bold]Your balance is:[/] {balance:.4f} τ")
 
     if registration_cost is not None:
-        console.log(
+        console.print(
             f"[bold]The cost to register by recycle is[/] {registration_cost:.4f} τ"
         )
 
     # Confirmation prompt
     if not typer.confirm("\nDo you want to continue?", default=False):
-        console.log("[bold yellow]Registration cancelled.[/]")
+        console.print("[bold yellow]Registration cancelled.[/]")
         raise typer.Exit(code=0)
 
-    console.log("\n[bold cyan]Registering...[/]")
+    console.print("\n[bold cyan]Registering...[/]")
 
     try:
         result: RegistrationResult = register_hotkey(
@@ -457,33 +457,33 @@ def register(
         _handle_unexpected_exception("Registration failed unexpectedly", exc)
 
     if result.status == "already":
-        console.log(f"[bold yellow]Hotkey already registered[/]. UID: {result.uid}")
+        console.print(f"[bold yellow]Hotkey already registered[/]. UID: {result.uid}")
         return
 
     if not result.success:
-        console.log("[bold red]Registration failed.[/]")
+        console.print("[bold red]Registration failed.[/]")
         raise typer.Exit(code=1)
 
     # Display extrinsic if available
     if result.extrinsic:
-        console.log(
+        console.print(
             f"[bold green]✔ Your extrinsic has been included as[/] [cyan]{result.extrinsic}[/]"
         )
 
     # Display balance update if available (already converted to float in register_hotkey)
     if result.balance_before is not None and result.balance_after is not None:
-        console.log(
+        console.print(
             f"[bold]Balance:[/] {result.balance_before:.4f} τ -> {result.balance_after:.4f} τ"
         )
 
     # Display success message with UID
     if result.status == "burned":
-        console.log(
+        console.print(
             "[bold green]✔ Registered on netuid[/] "
             f"[cyan]{netuid}[/] [bold green]with UID[/] [cyan]{result.uid}[/]"
         )
     else:
-        console.log(
+        console.print(
             "[bold green]✔ Registered on netuid[/] "
             f"[cyan]{netuid}[/] [bold green]with UID[/] [cyan]{result.uid}[/]"
         )
@@ -521,11 +521,11 @@ def register(
                 except VerifierError as exc:
                     message = str(exc)
                     if exc.status_code == 504 or "timeout" in message.lower():
-                        console.log(
+                        console.print(
                             "[bold yellow]Password generation timed out[/]: run 'cartha pair status' in ~1 minute to check once the verifier completes."
                         )
                     else:
-                        console.log(
+                        console.print(
                             f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha pair status' later to confirm."
                         )
                     return
@@ -538,19 +538,19 @@ def register(
 
         pair_pwd = password_payload.get("pwd")
         if pair_pwd:
-            console.log(
+            console.print(
                 f"[bold green]Pair password[/] for {result.hotkey}/{slot_uid}: [yellow]{pair_pwd}[/]"
             )
-            console.log(
+            console.print(
                 "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
             )
         else:
-            console.log(
+            console.print(
                 "[bold yellow]Verifier did not return a pair password[/]. "
                 "Run 'cartha pair status' to check availability."
             )
     else:
-        console.log(
+        console.print(
             "[bold yellow]UID not yet available[/] (node may still be syncing)."
         )
 
@@ -590,7 +590,7 @@ def pair_status(
 ) -> None:
     """Show the verifier state for a miner pair."""
     try:
-        console.log("[bold cyan]Validating miner UID:hotkey ownership...[/]")
+        console.print("[bold cyan]Validating miner UID:hotkey ownership...[/]")
         wallet = _load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
         slot_id = str(slot)
@@ -598,7 +598,7 @@ def pair_status(
             network=network, netuid=netuid, slot=slot_id, hotkey=hotkey
         )
 
-        console.log("[bold cyan]Signing hotkey ownership challenge...[/]")
+        console.print("[bold cyan]Signing hotkey ownership challenge...[/]")
         auth_payload = _build_pair_auth_payload(
             network=network,
             netuid=netuid,
@@ -641,15 +641,15 @@ def pair_status(
 
     if needs_password:
         if state == "unknown":
-            console.log(
+            console.print(
                 "[bold yellow]Verifier has no password record for this slot yet.[/]"
             )
         else:
-            console.log(
+            console.print(
                 "[bold yellow]Pair is registered but no verifier password has been issued yet.[/]"
             )
         if not typer.confirm("Generate a password now?", default=True):
-            console.log(
+            console.print(
                 "[bold yellow]Password generation skipped. Run this command again whenever you're ready.[/]"
             )
             raise typer.Exit(code=0)
@@ -670,11 +670,11 @@ def pair_status(
         except VerifierError as exc:
             message = str(exc)
             if exc.status_code == 504 or "timeout" in message.lower():
-                console.log(
+                console.print(
                     "[bold yellow]Password generation timed out[/]: run 'cartha pair status' again in ~1 minute."
                 )
             else:
-                console.log(f"[bold red]Password generation failed[/]: {message}")
+                console.print(f"[bold red]Password generation failed[/]: {message}")
             raise typer.Exit(code=1)
         except typer.Exit:
             raise
@@ -683,7 +683,7 @@ def pair_status(
                 "Verifier password generation failed unexpectedly", exc
             )
 
-        console.log("[bold green]Pair password issued.[/]")
+        console.print("[bold green]Pair password issued.[/]")
 
         try:
             with console.status(
@@ -699,7 +699,7 @@ def pair_status(
                     auth_payload=auth_payload,
                 )
         except VerifierError as exc:
-            console.log(f"[bold yellow]Unable to refresh pair status[/]: {exc}")
+            console.print(f"[bold yellow]Unable to refresh pair status[/]: {exc}")
             status = initial_status
             if state == "unknown":
                 status["state"] = "pending"
@@ -719,7 +719,7 @@ def pair_status(
     if json_output:
         console.print(JSON.from_data(sanitized))
         if password:
-            console.log(
+            console.print(
                 "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
             )
         return
@@ -747,7 +747,7 @@ def pair_status(
         table.add_row("Pair password", password)
     console.print(table)
     if password:
-        console.log(
+        console.print(
             "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
         )
 
@@ -765,18 +765,18 @@ def _submit_lock_proof_payload(
     signature: str,
 ) -> dict[str, Any]:
     if amount <= 0:
-        console.log("[bold red]Amount must be a positive integer.[/]")
+        console.print("[bold red]Amount must be a positive integer.[/]")
         raise typer.Exit(code=1)
 
     if not Web3.is_address(vault):
-        console.log("[bold red]Vault address must be a valid EVM address.[/]")
+        console.print("[bold red]Vault address must be a valid EVM address.[/]")
         raise typer.Exit(code=1)
     if not Web3.is_address(miner_evm):
-        console.log("[bold red]Miner EVM address must be a valid address.[/]")
+        console.print("[bold red]Miner EVM address must be a valid address.[/]")
         raise typer.Exit(code=1)
 
     if not tx_hash.startswith("0x"):
-        console.log("[bold red]Transaction hash must be a 0x-prefixed hex string.[/]")
+        console.print("[bold red]Transaction hash must be a 0x-prefixed hex string.[/]")
         raise typer.Exit(code=1)
 
     if not signature.startswith("0x"):
@@ -806,28 +806,28 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
             "already claimed" in error_msg.lower()
             or "claimed by another identity" in error_msg.lower()
         ):
-            console.log(
+            console.print(
                 "[bold red]Lock proof rejected[/]: Multiple hotkeys cannot claim the same EVM address"
             )
             evm_addr = payload.get("minerEvmAddress", "unknown")
-            console.log(
+            console.print(
                 "[yellow]Error details[/]: "
                 f"This EVM wallet ({evm_addr}) has already been linked "
                 f"to another hotkey in this epoch. Each EVM wallet position can only be claimed by "
                 f"one hotkey per epoch."
             )
-            console.log(
+            console.print(
                 "[dim]Tip[/]: If you want to link this deposit to a different hotkey, you must wait "
                 "until the next epoch or use a different EVM wallet."
             )
         else:
-            console.log(f"[bold red]Lock proof rejected[/]: {error_msg}")
+            console.print(f"[bold red]Lock proof rejected[/]: {error_msg}")
         raise typer.Exit(code=1)
 
     if json_output:
         console.print(JSON.from_data(response))
     else:
-        console.log("[bold green]Lock proof submitted successfully.[/]")
+        console.print("[bold green]Lock proof submitted successfully.[/]")
 
 
 @app.command("prove-lock")
@@ -952,11 +952,11 @@ def prove_lock(
             human_amount = Decimal(payload["amount"]) / Decimal(10**6)
             # Format amount nicely without scientific notation
             amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
-            console.log(
+            console.print(
                 f"[bold cyan]Amount submitted[/]: {amount_str} USDC "
                 f"({payload['amount']} base units)"
             )
-            console.log(
+            console.print(
                 "[bold cyan]Reminder[/]: keep your pair password private to prevent USDC theft."
             )
     except typer.Exit:
