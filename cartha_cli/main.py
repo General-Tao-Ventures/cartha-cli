@@ -405,8 +405,8 @@ def register(
     summary_table.add_column("Field", style="cyan")
     summary_table.add_column("Value", style="yellow")
 
-    summary_table.add_row("Netuid", str(netuid))
-    summary_table.add_row("Symbol", "" if burned else "PoW")
+    summary_table.add_row("Netuid", str(netuid), "Carτha")
+    summary_table.add_row("Symbol", "ך" if burned else "PoW")
     if registration_cost is not None:
         # registration_cost is already converted to float above
         summary_table.add_row("Cost (τ)", f"τ {registration_cost:.4f}")
