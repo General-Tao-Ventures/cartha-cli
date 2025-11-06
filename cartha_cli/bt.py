@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Optional
 
@@ -56,18 +57,24 @@ def register_hotkey(
 
     if subtensor.is_hotkey_registered(hotkey_ss58, netuid=netuid):
         neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
-        uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-        return RegistrationResult(status="already", success=True, uid=uid, hotkey=hotkey_ss58)
+        uid = (
+            None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
+        )
+        return RegistrationResult(
+            status="already", success=True, uid=uid, hotkey=hotkey_ss58
+        )
 
     # Get balance before registration
     balance_before = None
     balance_after = None
     extrinsic = None
-    
+
     try:
         balance_obj = subtensor.get_balance(wallet.coldkeypub.ss58_address)
         # Convert Balance object to float using .tao property
-        balance_before = balance_obj.tao if hasattr(balance_obj, 'tao') else float(balance_obj)
+        balance_before = (
+            balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
+        )
     except Exception:
         pass  # Balance may not be available, continue anyway
 
@@ -78,7 +85,7 @@ def register_hotkey(
             netuid=netuid,
             wait_for_finalization=wait_for_finalization,
         )
-        
+
         # Handle both return types: bool or (bool, message)
         if isinstance(registration_result, tuple):
             ok, message = registration_result
@@ -86,7 +93,7 @@ def register_hotkey(
                 extrinsic = message
         else:
             ok = registration_result
-        
+
         status = "burned"
     else:
         ok = subtensor.register(
@@ -108,35 +115,100 @@ def register_hotkey(
 
     if not ok:
         return RegistrationResult(
-            status=status, 
-            success=False, 
-            uid=None, 
+            status=status,
+            success=False,
+            uid=None,
             hotkey=hotkey_ss58,
             balance_before=balance_before,
             balance_after=balance_after,
-            extrinsic=extrinsic
+            extrinsic=extrinsic,
         )
 
     # Get balance after registration
     try:
         balance_obj = subtensor.get_balance(wallet.coldkeypub.ss58_address)
         # Convert Balance object to float using .tao property
-        balance_after = balance_obj.tao if hasattr(balance_obj, 'tao') else float(balance_obj)
+        balance_after = (
+            balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
+        )
     except Exception:
         pass
 
     neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
     uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-    
+
     return RegistrationResult(
-        status=status, 
-        success=True, 
-        uid=uid, 
+        status=status,
+        success=True,
+        uid=uid,
         hotkey=hotkey_ss58,
         balance_before=balance_before,
         balance_after=balance_after,
-        extrinsic=extrinsic
+        extrinsic=extrinsic,
     )
 
 
-__all__ = ["get_subtensor", "get_wallet", "register_hotkey", "RegistrationResult"]
+def get_burn_cost(network: str, netuid: int) -> Optional[float]:
+    """Get the burn cost (registration cost) for a subnet.
+
+    Args:
+        network: Bittensor network name (e.g., "test", "finney")
+        netuid: Subnet netuid
+
+    Returns:
+        Burn cost in TAO as a float, or None if unavailable
+    """
+    # Try async SubtensorInterface method (most reliable)
+    try:
+        from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
+        from bittensor_cli.src.bittensor.balances import Balance
+
+        async def _fetch_burn_cost():
+            async with SubtensorInterface(network=network) as subtensor_async:
+                block_hash = await subtensor_async.substrate.get_chain_head()
+                burn_raw = await subtensor_async.get_hyperparameter(
+                    param_name="Burn",
+                    netuid=netuid,
+                    block_hash=block_hash,
+                )
+                register_cost = (
+                    Balance.from_rao(int(burn_raw))
+                    if burn_raw is not None
+                    else Balance(0)
+                )
+                return (
+                    register_cost.tao
+                    if hasattr(register_cost, "tao")
+                    else float(register_cost)
+                )
+
+        return asyncio.run(_fetch_burn_cost())
+    except ImportError:
+        # bittensor-cli not available, try fallback synchronous method
+        try:
+            subtensor = get_subtensor(network)
+            # Use get_hyperparameter("Burn", netuid) - this works synchronously
+            if hasattr(subtensor, "get_hyperparameter"):
+                burn_raw = subtensor.get_hyperparameter("Burn", netuid=netuid)
+                if burn_raw is not None:
+                    # Convert from rao to TAO
+                    from bittensor import Balance
+                    balance_obj = Balance.from_rao(int(burn_raw))
+                    return balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
+        except Exception:
+            pass
+    except Exception as exc:
+        # Log other exceptions but don't show warnings in normal operation
+        import warnings
+        warnings.warn(f"Failed to fetch burn cost: {exc}", UserWarning)
+
+    return None
+
+
+__all__ = [
+    "get_subtensor",
+    "get_wallet",
+    "register_hotkey",
+    "get_burn_cost",
+    "RegistrationResult",
+]

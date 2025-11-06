@@ -17,7 +17,13 @@ from rich.rule import Rule
 from rich.table import Table
 from web3 import Web3
 
-from .bt import RegistrationResult, get_subtensor, get_wallet, register_hotkey
+from .bt import (
+    RegistrationResult,
+    get_burn_cost,
+    get_subtensor,
+    get_wallet,
+    register_hotkey,
+)
 from .config import settings
 from .verifier import (
     VerifierError,
@@ -383,13 +389,12 @@ def register(
 
     if burned:
         try:
-            cost_obj = subtensor.get_burn_cost(netuid=netuid)
-            # Convert Balance object to float using .tao property
-            registration_cost = (
-                cost_obj.tao if hasattr(cost_obj, "tao") else float(cost_obj)
+            registration_cost = get_burn_cost(network, netuid)
+        except Exception as exc:
+            # Log warning but continue - cost may not be available on all networks
+            console.log(
+                f"[bold yellow]Warning: Could not fetch registration cost[/]: {exc}"
             )
-        except Exception:
-            pass
 
     try:
         balance_obj = subtensor.get_balance(coldkey_ss58)
@@ -405,11 +410,12 @@ def register(
     summary_table.add_column("Field", style="cyan")
     summary_table.add_column("Value", style="yellow")
 
-    summary_table.add_row("Netuid", f"{str(netuid)} - Carτha")
-    summary_table.add_row("Symbol", "ך" if burned else "PoW")
-    if registration_cost is not None:
-        # registration_cost is already converted to float above
-        summary_table.add_row("Cost (τ)", f"τ {registration_cost:.4f}")
+    summary_table.add_row("Netuid", str(netuid))
+    if burned:
+        if registration_cost is not None:
+            summary_table.add_row("Cost", f"τ {registration_cost:.4f}")
+        else:
+            summary_table.add_row("Cost", "Unable to fetch")
     summary_table.add_row("Hotkey", hotkey_ss58)
     summary_table.add_row("Coldkey", coldkey_ss58)
     summary_table.add_row("Network", network)
