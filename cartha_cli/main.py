@@ -137,9 +137,6 @@ def _print_root_help() -> None:
         "CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)"
     )
     env_table.add_row(
-        "CARTHA_VERIFIER_CLI_TOKEN", "Bearer token required for password endpoints."
-    )
-    env_table.add_row(
         "CARTHA_NETWORK / CARTHA_NETUID", "Default network + subnet (finney / 35)."
     )
     env_table.add_row(

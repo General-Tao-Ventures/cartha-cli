@@ -28,14 +28,8 @@ def _request(
     *,
     params: Dict[str, Any] | None = None,
     json_data: Dict[str, Any] | None = None,
-    require_cli_token: bool = False,
 ) -> Dict[str, Any]:
     headers: Dict[str, str] = {"Accept": "application/json"}
-    if require_cli_token:
-        token = settings.verifier_cli_token
-        if not token:
-            raise VerifierError("Verifier CLI token missing. Set CARTHA_VERIFIER_CLI_TOKEN.")
-        headers["Authorization"] = f"Bearer {token}"
 
     try:
         response = requests.request(
@@ -88,7 +82,6 @@ def fetch_pair_status(
         "POST",
         "/v1/pair/status",
         json_data=payload,
-        require_cli_token=True,
     )
 
 
@@ -114,7 +107,6 @@ def fetch_pair_password(
         "POST",
         "/v1/pair/password/retrieve",
         json_data=payload,
-        require_cli_token=True,
     )
 
 
@@ -139,7 +131,6 @@ def register_pair_password(
         "POST",
         "/v1/pair/password/register",
         json_data=payload,
-        require_cli_token=True,
     )
 
 
