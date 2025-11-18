@@ -9,13 +9,41 @@ This guide will help you set up and use the Cartha CLI on the public testnet.
 - Bittensor wallet (for subnet registration)
 - Access to the testnet verifier URL
 
+### Installing `uv`
+
+If you don't have `uv` installed, you can install it with:
+
+**macOS/Linux:**
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Windows (PowerShell):**
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**Or via pip:**
+```bash
+pip install uv
+```
+
+After installation, restart your terminal or run `source ~/.bashrc` (or `source ~/.zshrc` on macOS).
+
 ## Installation
 
 ### Option 1: Using `uv` (Recommended)
 
+`uv` automatically manages virtual environments - no need to create one manually! It will create a `.venv` directory in the project and handle all dependency isolation.
+
 ```bash
 cd cartha-cli
-uv sync
+uv sync  # Creates .venv automatically and installs dependencies
+```
+
+Then use `uv run` to execute commands (it automatically uses the project's virtual environment):
+```bash
+uv run cartha --help  # Runs in the project's virtual environment
 ```
 
 ### Option 2: Using `pip`
