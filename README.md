@@ -24,7 +24,7 @@ Set the following environment variables before invoking commands that reach the 
 
 | Variable | Description |
 | --- | --- |
-| `CARTHA_NETWORK` / `CARTHA_NETUID` | Default Bittensor network + subnet netuid (`finney`/`35`). |
+| `CARTHA_NETWORK` / `CARTHA_NETUID` | Bittensor network + subnet netuid. Defaults: `finney`/`35`. |
 | `CARTHA_VERIFIER_URL` | Verifier endpoint URL (default `http://127.0.0.1:8000`). |
 
 Wallet files must already exist under the Bittensor wallet path (or be available via `BITTENSOR_WALLET_PATH`).
