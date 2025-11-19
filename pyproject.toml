@@ -26,8 +26,8 @@ dynamic = ["entry-points"]
 [project.optional-dependencies]
 dev = ["pytest>=8.2", "ruff>=0.4", "mypy>=1.9"]
 
-[tool.uv]
-dev-dependencies = ["pytest>=8.2", "ruff>=0.4", "mypy>=1.9"]
+[dependency-groups]
+dev = ["pytest>=8.2", "ruff>=0.4", "mypy>=1.9"]
 
 [project.scripts]
 cartha = "cartha_cli:main"

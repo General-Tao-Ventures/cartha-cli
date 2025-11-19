@@ -8,7 +8,7 @@ import time
 from datetime import UTC, datetime
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 from zoneinfo import ZoneInfo
 
 import bittensor as bt
@@ -69,7 +69,7 @@ def _trace_enabled() -> bool:
     return _TRACE_ENABLED
 
 
-def _exit_with_error(message: str, code: int = 1) -> None:
+def _exit_with_error(message: str, code: int = 1) -> NoReturn:
     console.print(f"[bold red]{message}[/]")
     raise typer.Exit(code=code)
 
@@ -133,10 +133,16 @@ def _format_timestamp(ts: int | float | str | None) -> str:
 
         # Get local timezone
         try:
-            local_tz = ZoneInfo("local")
+            local_tz: ZoneInfo = ZoneInfo("local")
         except Exception:
             # Fallback if zoneinfo fails (shouldn't happen on Python 3.11+)
-            local_tz = datetime.now().astimezone().tzinfo
+            fallback_tz = datetime.now().astimezone().tzinfo
+            if fallback_tz is None:
+                # Ultimate fallback to UTC
+                local_tz = ZoneInfo("UTC")
+            else:
+                # Type ignore: mypy doesn't understand that ZoneInfo is compatible with tzinfo
+                local_tz = fallback_tz  # type: ignore[assignment]
 
         local_dt = utc_dt.astimezone(local_tz)
 
@@ -1576,7 +1582,7 @@ def prove_lock(
                 # Generate signature using the private key we already collected
                 console.print("\n[dim]Generating EIP-712 signature...[/]")
                 try:
-                    signature, derived_evm = _generate_eip712_signature(
+                    signature, derived_evm_str = _generate_eip712_signature(
                         chain_id=chain,
                         vault_address=vault,
                         miner_hotkey=hotkey,
@@ -1587,8 +1593,13 @@ def prove_lock(
                         timestamp=timestamp,
                         private_key=_private_key_for_signing,
                     )
+                    # Convert to ChecksumAddress for comparison
+                    derived_evm = Web3.to_checksum_address(derived_evm_str)
                     # Verify the address still matches (should always match since we confirmed it earlier)
-                    if miner_evm.lower() != derived_evm.lower():
+                    if (
+                        miner_evm is not None
+                        and miner_evm.lower() != derived_evm.lower()
+                    ):
                         console.print(
                             f"[yellow]Warning:[/] EVM address mismatch detected. "
                             f"Expected {miner_evm}, got {derived_evm}"
@@ -1633,7 +1644,7 @@ def prove_lock(
                 typed_data = eip712_message.to_eip712()
 
                 # Convert HexBytes to strings for JSON serialization
-                def hexbytes_to_str(obj):
+                def hexbytes_to_str(obj: Any) -> str:
                     """Convert HexBytes to hex string for JSON serialization."""
                     from hexbytes import HexBytes
 
@@ -1769,10 +1780,18 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
         if timestamp is None:
             timestamp = int(time.time())
 
-        # Ensure amount_base_units is set
-        if amount_base_units is None:
-            console.print("[bold red]Error:[/] Amount must be provided and valid")
-            raise typer.Exit(code=1)
+        # Ensure all required fields are set (mypy type narrowing)
+        # Note: amount_base_units is guaranteed to be set by the logic above
+        assert amount_base_units is not None, "Amount must be set"
+        assert chain is not None, "Chain ID must be set"
+        assert vault is not None, "Vault address must be set"
+        assert tx is not None, "Transaction hash must be set"
+        assert hotkey is not None, "Hotkey must be set"
+        assert slot is not None, "Slot UID must be set"
+        assert miner_evm is not None, "Miner EVM address must be set"
+        assert password is not None, "Pair password must be set"
+        assert signature is not None, "Signature must be set"
+        assert timestamp is not None, "Timestamp must be set"
 
         slot_id = str(slot)
         payload = _submit_lock_proof_payload(
@@ -1889,11 +1908,15 @@ def claim_deposit(
     ),
 ) -> None:
     """Alias for prove-lock for deposit-first workflows."""
+    # Convert amount from int to str if provided
+    amount_str: str | None = None
+    if amount is not None:
+        amount_str = str(amount)
     prove_lock(
         chain=chain,
         vault=vault,
         tx=tx,
-        amount=amount,
+        amount=amount_str,
         hotkey=hotkey,
         slot=slot,
         miner_evm=miner_evm,

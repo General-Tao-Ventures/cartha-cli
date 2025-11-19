@@ -30,15 +30,11 @@ app = typer.Typer(add_completion=False)
 console = Console()
 
 # Default output path relative to testnet folder
-OUTPUT_PATH = (
-    Path(__file__).resolve().parent / "outputs" / "lock_proof_payload.json"
-).resolve()
+OUTPUT_PATH = (Path(__file__).resolve().parent / "outputs" / "lock_proof_payload.json").resolve()
 
 # Mock values for demo
 DEFAULT_CHAIN = 31337
-DEFAULT_VAULT = (
-    "0x00000000000000000000000000000000000000aa"  # lowercase for consistency
-)
+DEFAULT_VAULT = "0x00000000000000000000000000000000000000aa"  # lowercase for consistency
 DEFAULT_TX = "0x1111111111111111111111111111111111111111111111111111111111111111"
 
 
@@ -94,13 +90,9 @@ def main(
     hotkey: str = typer.Option(
         None, "--hotkey", help="Miner hotkey (SS58). Required if not in env."
     ),
-    slot: str = typer.Option(
-        None, "--slot", help="Miner slot UID. Required if not in env."
-    ),
-    pwd: str = typer.Option(
-        None, "--pwd", help="Pair password (0x...). Required if not in env."
-    ),
-      output: Path = typer.Option(  # noqa: B008
+    slot: str = typer.Option(None, "--slot", help="Miner slot UID. Required if not in env."),
+    pwd: str = typer.Option(None, "--pwd", help="Pair password (0x...). Required if not in env."),
+    output: Path = typer.Option(  # noqa: B008
         OUTPUT_PATH, "--output", help="Where to store the generated payload JSON."
     ),
 ) -> None:
@@ -125,9 +117,7 @@ def main(
 
     tx_hash = _normalize_hex(tx.lower())
     if len(tx_hash) != 66:
-        raise typer.BadParameter(
-            "Transaction hash must be 32 bytes (0x + 64 hex chars)."
-        )
+        raise typer.BadParameter("Transaction hash must be 32 bytes (0x + 64 hex chars).")
 
     # Prompt for amount if not provided
     if amount is None:
@@ -136,18 +126,19 @@ def main(
             "Deposit amount in USDC",
             default=random_default,
         )
-    
+
     amount_base_units = to_base_units(amount)
 
     # Get required inputs from args or env
-    hotkey = hotkey or os.getenv("CARTHA_DEMO_HOTKEY")
-    if not hotkey:
-        hotkey = Prompt.ask("Miner hotkey (SS58)")
+    hotkey_val: str = hotkey or os.getenv("CARTHA_DEMO_HOTKEY") or ""
+    if not hotkey_val:
+        hotkey_val = Prompt.ask("Miner hotkey (SS58)")
+    hotkey = hotkey_val
 
-    slot = slot or os.getenv("CARTHA_DEMO_SLOT")
-    if not slot:
-        slot = Prompt.ask("Miner slot UID")
-    slot = str(slot)
+    slot_val: str | None = slot or os.getenv("CARTHA_DEMO_SLOT")
+    if not slot_val:
+        slot_val = Prompt.ask("Miner slot UID")
+    slot = str(slot_val)
 
     password = pwd or os.getenv("CARTHA_DEMO_PASSWORD")
     if not password:
@@ -177,6 +168,7 @@ def main(
 
     # Get current timestamp
     import time
+
     timestamp = int(time.time())
 
     # Build EIP-712 message
@@ -223,9 +215,7 @@ def main(
 
     console.print(f"\n[bold green]✓ Saved[/] payload to [yellow]{output}[/]")
     console.print("\n[bold cyan]Command to submit lock proof:[/]\n")
-    console.print(
-        f"[green]uv run cartha prove-lock --payload-file {output}[/]"
-    )
+    console.print(f"[green]uv run cartha prove-lock --payload-file {output}[/]")
     console.print("\n[dim]Or manually with all parameters:[/]\n")
     console.print(
         f"[green]uv run cartha prove-lock \\\n"
@@ -251,4 +241,3 @@ def main(
 
 if __name__ == "__main__":
     app()
-

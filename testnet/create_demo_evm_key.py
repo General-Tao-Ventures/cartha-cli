@@ -11,9 +11,7 @@ from rich.console import Console
 try:
     from eth_account import Account
 except ImportError as exc:  # pragma: no cover
-    raise SystemExit(
-        "eth-account is required. Run: uv sync"
-    ) from exc
+    raise SystemExit("eth-account is required. Run: uv sync") from exc
 
 
 app = typer.Typer(add_completion=False)
@@ -50,9 +48,7 @@ def main(
     if output is not None:
         output = output.expanduser().resolve()
         if output.exists() and not overwrite:
-            raise typer.BadParameter(
-                f"{output} already exists. Use --overwrite to replace it."
-            )
+            raise typer.BadParameter(f"{output} already exists. Use --overwrite to replace it.")
         output.parent.mkdir(parents=True, exist_ok=True)
         payload = {
             "CARTHA_EVM_PK": private_key,
@@ -68,4 +64,3 @@ def main(
 
 if __name__ == "__main__":
     app()
-

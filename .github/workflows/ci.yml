@@ -115,6 +115,6 @@ jobs:
         run: uv sync
 
       - name: Run mypy
-        run: uv run mypy cartha_cli
+        run: uv run mypy .
         continue-on-error: true  # Allow type checking to fail without failing the workflow
 

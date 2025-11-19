@@ -56,12 +56,8 @@ def register_hotkey(
 
     if subtensor.is_hotkey_registered(hotkey_ss58, netuid=netuid):
         neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
-        uid = (
-            None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-        )
-        return RegistrationResult(
-            status="already", success=True, uid=uid, hotkey=hotkey_ss58
-        )
+        uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
+        return RegistrationResult(status="already", success=True, uid=uid, hotkey=hotkey_ss58)
 
     # Get balance before registration
     balance_before = None
@@ -71,9 +67,7 @@ def register_hotkey(
     try:
         balance_obj = subtensor.get_balance(wallet.coldkeypub.ss58_address)
         # Convert Balance object to float using .tao property
-        balance_before = (
-            balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
-        )
+        balance_before = balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
     except Exception:
         pass  # Balance may not be available, continue anyway
 
@@ -127,9 +121,7 @@ def register_hotkey(
     try:
         balance_obj = subtensor.get_balance(wallet.coldkeypub.ss58_address)
         # Convert Balance object to float using .tao property
-        balance_after = (
-            balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
-        )
+        balance_after = balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
     except Exception:
         pass
 
@@ -159,10 +151,12 @@ def get_burn_cost(network: str, netuid: int) -> float | None:
     """
     # Try async SubtensorInterface method (most reliable)
     try:
-        from bittensor_cli.src.bittensor.balances import Balance
-        from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
+        from bittensor_cli.src.bittensor.balances import Balance  # type: ignore[import-not-found]
+        from bittensor_cli.src.bittensor.subtensor_interface import (  # type: ignore[import-not-found]
+            SubtensorInterface,
+        )
 
-        async def _fetch_burn_cost():
+        async def _fetch_burn_cost() -> float:
             async with SubtensorInterface(network=network) as subtensor_async:
                 block_hash = await subtensor_async.substrate.get_chain_head()
                 burn_raw = await subtensor_async.get_hyperparameter(
@@ -171,15 +165,12 @@ def get_burn_cost(network: str, netuid: int) -> float | None:
                     block_hash=block_hash,
                 )
                 register_cost = (
-                    Balance.from_rao(int(burn_raw))
-                    if burn_raw is not None
-                    else Balance(0)
+                    Balance.from_rao(int(burn_raw)) if burn_raw is not None else Balance(0)
                 )
-                return (
-                    register_cost.tao
-                    if hasattr(register_cost, "tao")
-                    else float(register_cost)
+                tao_value = (
+                    register_cost.tao if hasattr(register_cost, "tao") else float(register_cost)
                 )
+                return float(tao_value)
 
         return asyncio.run(_fetch_burn_cost())
     except ImportError:
@@ -192,6 +183,7 @@ def get_burn_cost(network: str, netuid: int) -> float | None:
                 if burn_raw is not None:
                     # Convert from rao to TAO
                     from bittensor import Balance
+
                     balance_obj = Balance.from_rao(int(burn_raw))
                     return balance_obj.tao if hasattr(balance_obj, "tao") else float(balance_obj)
         except Exception:
@@ -199,6 +191,7 @@ def get_burn_cost(network: str, netuid: int) -> float | None:
     except Exception as exc:
         # Log other exceptions but don't show warnings in normal operation
         import warnings
+
         warnings.warn(f"Failed to fetch burn cost: {exc}", UserWarning, stacklevel=2)
 
     return None

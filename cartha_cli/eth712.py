@@ -31,7 +31,7 @@ if not _has_new_api and not _has_old_api:
 from hexbytes import HexBytes
 
 
-def _convert_hexbytes_to_bytes(typed_data: dict) -> dict:
+def _convert_hexbytes_to_bytes(typed_data: dict[str, Any]) -> dict[str, Any]:
     """Convert HexBytes to bytes in message."""
     if "message" in typed_data:
         message = dict(typed_data["message"])
@@ -42,7 +42,7 @@ def _convert_hexbytes_to_bytes(typed_data: dict) -> dict:
     return typed_data
 
 
-def _convert_hexbytes_to_hex_no_prefix(typed_data: dict) -> dict:
+def _convert_hexbytes_to_hex_no_prefix(typed_data: dict[str, Any]) -> dict[str, Any]:
     """Convert HexBytes to hex strings without 0x prefix."""
     if "message" in typed_data:
         message = dict(typed_data["message"])
@@ -57,7 +57,7 @@ def _convert_hexbytes_to_hex_no_prefix(typed_data: dict) -> dict:
     return typed_data
 
 
-def _convert_hexbytes_to_hex_string(typed_data: dict) -> dict:
+def _convert_hexbytes_to_hex_string(typed_data: dict[str, Any]) -> dict[str, Any]:
     """Convert HexBytes to hex strings with 0x prefix."""
     if "message" in typed_data:
         message = dict(typed_data["message"])
@@ -68,7 +68,9 @@ def _convert_hexbytes_to_hex_string(typed_data: dict) -> dict:
     return typed_data
 
 
-def _encode_typed_data_compat(typed_data: dict) -> bytes:
+def _encode_typed_data_compat(
+    typed_data: dict[str, Any],
+) -> Any:  # Returns SignableMessage
     """Wrapper to handle API differences between encode_typed_data and encode_structured_data.
 
     Tries both APIs with different HexBytes conversion formats.
@@ -111,9 +113,7 @@ def _encode_typed_data_compat(typed_data: dict) -> bytes:
 
     # If all attempts failed, raise comprehensive error
     error_summary = "\n".join(f"  - {err}" for err in errors)
-    raise RuntimeError(
-        f"EIP-712 encoding failed with all APIs and formats:\n{error_summary}"
-    )
+    raise RuntimeError(f"EIP-712 encoding failed with all APIs and formats:\n{error_summary}")
 
 
 @dataclass
@@ -170,7 +170,7 @@ class LockProofMessage:
             "message": message,
         }
 
-    def encode(self) -> bytes:
+    def encode(self) -> Any:  # Returns SignableMessage
         return _encode_typed_data_compat(self.to_eip712())
 
 
