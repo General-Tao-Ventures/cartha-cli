@@ -800,7 +800,7 @@ def pair_status(
         console.print(
             "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
         )
-    
+
     # Explicitly return to ensure clean exit
     return
 
@@ -867,7 +867,7 @@ def _generate_eip712_signature(
     private_key: str,
 ) -> tuple[str, str]:
     """Generate EIP-712 signature for LockProof.
-    
+
     Args:
         chain_id: EVM chain ID
         vault_address: Vault contract address
@@ -878,7 +878,7 @@ def _generate_eip712_signature(
         password: Pair password (0x-prefixed hex)
         timestamp: Unix timestamp
         private_key: EVM private key (0x-prefixed hex)
-    
+
     Returns:
         Tuple of (signature, miner_evm_address)
     """
@@ -886,24 +886,24 @@ def _generate_eip712_signature(
         _exit_with_error(
             "eth-account is required for EIP-712 signing. Install it with: uv sync"
         )
-    
+
     # Normalize private key
     private_key_normalized = _normalize_hex(private_key)
-    
+
     # Derive EVM address from private key
     account = Account.from_key(private_key_normalized)
     miner_evm_address = Web3.to_checksum_address(account.address)
-    
+
     # Normalize password
     password_normalized = _normalize_hex(password)
     if len(password_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
         _exit_with_error("Password must be 32 bytes (0x + 64 hex characters)")
-    
+
     # Normalize tx hash
     tx_hash_normalized = _normalize_hex(tx_hash.lower())
     if len(tx_hash_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
         _exit_with_error("Transaction hash must be 32 bytes (0x + 64 hex characters)")
-    
+
     # Build EIP-712 message
     message = LockProofMessage(
         chain_id=chain_id,
@@ -916,17 +916,17 @@ def _generate_eip712_signature(
         password=password_normalized,
         timestamp=timestamp,
     )
-    
+
     # Sign the message
     signable = message.encode()
     signed = Account.sign_message(signable, private_key=private_key_normalized)
-    
+
     # Normalize signature: ensure single 0x prefix
     sig_hex = signed.signature.hex()
     if sig_hex.startswith("0x"):
         sig_hex = sig_hex[2:]
     signature_normalized = "0x" + sig_hex
-    
+
     return signature_normalized, miner_evm_address
 
 
@@ -1042,33 +1042,47 @@ def prove_lock(
         # If payload file is provided, load all values from it
         if payload_file is not None:
             if not payload_file.exists():
-                console.print(f"[bold red]Error:[/] Payload file not found: {payload_file}")
+                console.print(
+                    f"[bold red]Error:[/] Payload file not found: {payload_file}"
+                )
                 raise typer.Exit(code=1)
-            
+
             try:
                 payload_data = json.loads(payload_file.read_text())
             except json.JSONDecodeError as exc:
-                console.print(f"[bold red]Error:[/] Invalid JSON in payload file: {exc}")
+                console.print(
+                    f"[bold red]Error:[/] Invalid JSON in payload file: {exc}"
+                )
                 raise typer.Exit(code=1)
-            
+
             # Extract values from payload file, using command-line args as overrides
             chain = chain if chain is not None else payload_data.get("chain")
             vault = vault if vault is not None else payload_data.get("vault")
             tx = tx if tx is not None else payload_data.get("tx")
             # Use amountNormalized if available, otherwise amount (which is in base units)
             if amount is None:
-                amount = payload_data.get("amountNormalized") or str(payload_data.get("amount", ""))
+                amount = payload_data.get("amountNormalized") or str(
+                    payload_data.get("amount", "")
+                )
             hotkey = hotkey if hotkey is not None else payload_data.get("hotkey")
             # Slot is stored as string in JSON, convert to int if loading from file
             if slot is None:
                 slot_raw = payload_data.get("slot")
                 if slot_raw is not None:
                     slot = int(slot_raw) if isinstance(slot_raw, str) else slot_raw
-            miner_evm = miner_evm if miner_evm is not None else payload_data.get("miner_evm")
-            password = password if password is not None else payload_data.get("password")
-            signature = signature if signature is not None else payload_data.get("signature")
-            timestamp = timestamp if timestamp is not None else payload_data.get("timestamp")
-            
+            miner_evm = (
+                miner_evm if miner_evm is not None else payload_data.get("miner_evm")
+            )
+            password = (
+                password if password is not None else payload_data.get("password")
+            )
+            signature = (
+                signature if signature is not None else payload_data.get("signature")
+            )
+            timestamp = (
+                timestamp if timestamp is not None else payload_data.get("timestamp")
+            )
+
             # Validate that all required fields are present
             missing_fields = []
             if chain is None:
@@ -1091,16 +1105,16 @@ def prove_lock(
                 missing_fields.append("signature")
             if timestamp is None:
                 missing_fields.append("timestamp")
-            
+
             if missing_fields:
                 console.print(
                     f"[bold red]Error:[/] Payload file is missing required fields: {', '.join(missing_fields)}\n"
                     f"Make sure the payload file was generated by build_lock_proof.py"
                 )
                 raise typer.Exit(code=1)
-            
+
             console.print(f"[dim]Loaded payload from:[/] {payload_file}")
-        
+
         # Only prompt if payload_file was not provided or if values are still missing
         if chain is None:
             chain = int(typer.prompt("Chain ID", show_default=False))
@@ -1131,17 +1145,21 @@ def prove_lock(
         if slot is None:
             slot = int(typer.prompt("Slot UID", show_default=False))
         if password is None:
-            password = typer.prompt("Pair password (0x...)", hide_input=False, show_default=False)
-        
+            password = typer.prompt(
+                "Pair password (0x...)", hide_input=False, show_default=False
+            )
+
         # Handle signature: if missing, prompt for signing method
         if signature is None:
             has_signature = typer.confirm(
                 "Do you already have an EIP-712 signature? (y/n)", default=False
             )
-            
+
             if has_signature:
                 # User has signature from external wallet
-                signature = typer.prompt("Paste your EIP-712 signature (0x...)", show_default=False)
+                signature = typer.prompt(
+                    "Paste your EIP-712 signature (0x...)", show_default=False
+                )
                 if miner_evm is None:
                     miner_evm = typer.prompt("Miner EVM address", show_default=False)
             else:
@@ -1149,7 +1167,7 @@ def prove_lock(
                 sign_locally = typer.confirm(
                     "Sign locally with private key? (y/n)", default=True
                 )
-                
+
                 if sign_locally:
                     # Get private key from env or prompt
                     private_key = os.getenv("CARTHA_EVM_PK")
@@ -1158,13 +1176,15 @@ def prove_lock(
                             "[dim]Tip:[/] Set CARTHA_EVM_PK environment variable to avoid prompting"
                         )
                         private_key = typer.prompt(
-                            "EVM private key (0x...)", hide_input=True, show_default=False
+                            "EVM private key (0x...)",
+                            hide_input=True,
+                            show_default=False,
                         )
-                    
+
                     # Generate timestamp if not provided
                     if timestamp is None:
                         timestamp = int(time.time())
-                    
+
                     # Generate signature
                     console.print("[dim]Generating EIP-712 signature...[/]")
                     try:
@@ -1192,10 +1212,14 @@ def prove_lock(
                                 raise typer.Exit(code=1)
                         console.print("[bold green]✓ Signature generated[/]")
                     except Exception as exc:
-                        _handle_unexpected_exception("Failed to generate signature", exc)
+                        _handle_unexpected_exception(
+                            "Failed to generate signature", exc
+                        )
                 else:
                     # External signing (MetaMask, etc.)
-                    console.print("\n[bold cyan]Sign the EIP-712 message externally:[/]")
+                    console.print(
+                        "\n[bold cyan]Sign the EIP-712 message externally:[/]"
+                    )
                     console.print(
                         "[dim]Use MetaMask, ethers.js, or another wallet that supports EIP-712 signing.[/]"
                     )
@@ -1213,14 +1237,18 @@ def prove_lock(
                     console.print(
                         "\n[dim]See docs/EIP712_SIGNING.md for detailed signing instructions.[/]"
                     )
-                    signature = typer.prompt("Paste your EIP-712 signature (0x...)", show_default=False)
+                    signature = typer.prompt(
+                        "Paste your EIP-712 signature (0x...)", show_default=False
+                    )
                     if miner_evm is None:
-                        miner_evm = typer.prompt("Miner EVM address", show_default=False)
-        
+                        miner_evm = typer.prompt(
+                            "Miner EVM address", show_default=False
+                        )
+
         # Ensure miner_evm is set if signature was provided but miner_evm wasn't
         if miner_evm is None:
             miner_evm = typer.prompt("Miner EVM address", show_default=False)
-        
+
         # Ensure timestamp is set (required for signature verification)
         if timestamp is None:
             timestamp = int(time.time())

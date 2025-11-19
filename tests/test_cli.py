@@ -3,6 +3,7 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -30,6 +31,38 @@ class _StubWeb3:
         return value
 
 
+# Stub eth_account if not available (for tests that don't need it)
+try:
+    from eth_account import Account
+    _eth_account_available = True
+except ImportError:
+    _eth_account_available = False
+    # Create a minimal stub
+    class _StubAccount:
+        @staticmethod
+        def create():
+            class _StubAccountInstance:
+                def __init__(self):
+                    self.key = types.SimpleNamespace(hex=lambda: "0x" + "00" * 32)
+                    self.address = "0x0000000000000000000000000000000000000000"
+            return _StubAccountInstance()
+        
+        @staticmethod
+        def from_key(key):
+            class _StubAccountInstance:
+                def __init__(self):
+                    self.address = "0x0000000000000000000000000000000000000000"
+            return _StubAccountInstance()
+        
+        @staticmethod
+        def sign_message(message, private_key):
+            class _StubSignedMessage:
+                def __init__(self):
+                    self.signature = types.SimpleNamespace(hex=lambda: "0x" + "00" * 65)
+            return _StubSignedMessage()
+    
+    Account = _StubAccount
+
 bt_stub = types.SimpleNamespace(
     KeyFileError=_StubKeyFileError,
     Keypair=_StubKeypair,
@@ -38,6 +71,8 @@ bt_stub = types.SimpleNamespace(
 )
 sys.modules.setdefault("bittensor", bt_stub)
 sys.modules.setdefault("web3", types.SimpleNamespace(Web3=_StubWeb3))
+if not _eth_account_available:
+    sys.modules.setdefault("eth_account", types.SimpleNamespace(Account=Account))
 
 from cartha_cli.bt import RegistrationResult
 from cartha_cli.main import app
@@ -388,3 +423,406 @@ def test_prove_lock_command_success(monkeypatch):
     # Amount "12345" is < 1e9, so treated as normalized USDC and converted to base units
     assert payload["amount"] == 12345000000  # 12345 USDC = 12345 * 1e6 base units
     assert payload["pwd"] == "0x" + "44" * 32
+
+
+def test_prove_lock_with_local_signature_generation(monkeypatch):
+    """Test prove-lock with local signature generation when signature is missing."""
+    import os
+    try:
+        from eth_account import Account
+    except ImportError:
+        pytest.skip("eth_account not available")
+    
+    captured = {}
+    
+    # Generate a test private key and address
+    test_account = Account.create()
+    test_private_key = test_account.key.hex()
+    test_address = test_account.address
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    # Mock environment variable
+    monkeypatch.setenv("CARTHA_EVM_PK", test_private_key)
+    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    
+    # Mock prompts: user says they don't have signature, wants to sign locally
+    prompt_responses = iter([
+        False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
+        True,   # "Sign locally with private key? (y/n)" -> y
+    ])
+    
+    def fake_confirm(*args, **kwargs):
+        return next(prompt_responses)
+    
+    monkeypatch.setattr("typer.confirm", fake_confirm)
+
+    result = runner.invoke(
+        app,
+        [
+            "prove-lock",
+            "--chain",
+            "8453",
+            "--vault",
+            "0x000000000000000000000000000000000000dEaD",
+            "--tx",
+            "0x" + "ab" * 32,
+            "--amount",
+            "250",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "9",
+            "--pwd",
+            "0x" + "44" * 32,
+            # No --signature flag
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Lock proof submitted successfully." in result.stdout
+    assert "Signature generated" in result.stdout or "✓ Signature generated" in result.stdout
+    
+    payload = captured["payload"]
+    assert payload["minerHotkey"] == "bt1xyz"
+    assert payload["slotUID"] == "9"
+    assert payload["amount"] == 250000000  # 250 USDC = 250 * 1e6 base units
+    assert payload["pwd"] == "0x" + "44" * 32
+    assert "signature" in payload
+    assert payload["signature"].startswith("0x")
+    assert len(payload["signature"]) == 132  # 0x + 130 hex chars
+    # EVM address should be derived from private key
+    assert payload["minerEvmAddress"].lower() == test_address.lower()
+
+
+def test_prove_lock_with_external_signature_prompt(monkeypatch):
+    """Test prove-lock when user provides signature from external wallet."""
+    captured = {}
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    
+    # Mock prompts: user says they have signature from external wallet
+    prompt_responses = iter([
+        True,   # "Do you already have an EIP-712 signature? (y/n)" -> y
+        "0x" + "66" * 65,  # Paste signature
+        "0x1111111111111111111111111111111111111111",  # EVM address
+    ])
+    
+    def fake_confirm(*args, **kwargs):
+        return next(prompt_responses)
+    
+    def fake_prompt(*args, **kwargs):
+        return next(prompt_responses)
+    
+    monkeypatch.setattr("typer.confirm", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
+
+    result = runner.invoke(
+        app,
+        [
+            "prove-lock",
+            "--chain",
+            "8453",
+            "--vault",
+            "0x000000000000000000000000000000000000dEaD",
+            "--tx",
+            "0x" + "ab" * 32,
+            "--amount",
+            "250",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "9",
+            "--pwd",
+            "0x" + "44" * 32,
+            # No --signature flag
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Lock proof submitted successfully." in result.stdout
+    
+    payload = captured["payload"]
+    assert payload["minerHotkey"] == "bt1xyz"
+    assert payload["slotUID"] == "9"
+    assert payload["amount"] == 250000000
+    assert payload["signature"] == "0x" + "66" * 65
+    assert payload["minerEvmAddress"] == "0x1111111111111111111111111111111111111111"
+
+
+def test_prove_lock_local_signature_without_env_var(monkeypatch):
+    """Test prove-lock local signing when CARTHA_EVM_PK is not set."""
+    import os
+    try:
+        from eth_account import Account
+    except ImportError:
+        pytest.skip("eth_account not available")
+    
+    captured = {}
+    
+    # Generate a test private key
+    test_account = Account.create()
+    test_private_key = test_account.key.hex()
+    test_address = test_account.address
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    # Ensure env var is not set
+    monkeypatch.delenv("CARTHA_EVM_PK", raising=False)
+    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    
+    # Mock prompts
+    prompt_responses = iter([
+        False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
+        True,   # "Sign locally with private key? (y/n)" -> y
+        test_private_key,  # "EVM private key (0x...)" -> paste key
+    ])
+    
+    def fake_confirm(*args, **kwargs):
+        return next(prompt_responses)
+    
+    def fake_prompt(*args, **kwargs):
+        if "private key" in str(args[0]).lower():
+            return next(prompt_responses)
+        return "default"
+    
+    monkeypatch.setattr("typer.confirm", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
+
+    result = runner.invoke(
+        app,
+        [
+            "prove-lock",
+            "--chain",
+            "8453",
+            "--vault",
+            "0x000000000000000000000000000000000000dEaD",
+            "--tx",
+            "0x" + "ab" * 32,
+            "--amount",
+            "250",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "9",
+            "--pwd",
+            "0x" + "44" * 32,
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "Lock proof submitted successfully." in result.stdout
+    
+    payload = captured["payload"]
+    assert payload["minerEvmAddress"].lower() == test_address.lower()
+    assert "signature" in payload
+    assert payload["signature"].startswith("0x")
+
+
+def test_prove_lock_signature_evm_address_mismatch(monkeypatch):
+    """Test prove-lock when provided EVM address doesn't match private key."""
+    import os
+    try:
+        from eth_account import Account
+    except ImportError:
+        pytest.skip("eth_account not available")
+    
+    captured = {}
+    
+    # Generate a test private key
+    test_account = Account.create()
+    test_private_key = test_account.key.hex()
+    test_address = test_account.address
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    monkeypatch.setenv("CARTHA_EVM_PK", test_private_key)
+    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    
+    # Mock prompts: user provides different EVM address
+    prompt_responses = iter([
+        False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
+        True,   # "Sign locally with private key? (y/n)" -> y
+        False,  # "Continue anyway?" -> n (reject mismatch)
+    ])
+    
+    def fake_confirm(*args, **kwargs):
+        return next(prompt_responses)
+    
+    monkeypatch.setattr("typer.confirm", fake_confirm)
+
+    result = runner.invoke(
+        app,
+        [
+            "prove-lock",
+            "--chain",
+            "8453",
+            "--vault",
+            "0x000000000000000000000000000000000000dEaD",
+            "--tx",
+            "0x" + "ab" * 32,
+            "--amount",
+            "250",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "9",
+            "--miner-evm",
+            "0x2222222222222222222222222222222222222222",  # Different address
+            "--pwd",
+            "0x" + "44" * 32,
+        ],
+    )
+
+    # Should exit because user rejected the mismatch
+    assert result.exit_code == 1
+
+
+def test_prove_lock_external_signing_flow(monkeypatch):
+    """Test prove-lock when user chooses external signing."""
+    captured = {}
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    
+    # Mock prompts: user chooses external signing
+    prompt_responses = iter([
+        False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
+        False,  # "Sign locally with private key? (y/n)" -> n (external)
+        "0x" + "77" * 65,  # Paste signature after external signing
+        "0x1111111111111111111111111111111111111111",  # EVM address
+    ])
+    
+    def fake_confirm(*args, **kwargs):
+        return next(prompt_responses)
+    
+    def fake_prompt(*args, **kwargs):
+        return next(prompt_responses)
+    
+    monkeypatch.setattr("typer.confirm", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
+
+    result = runner.invoke(
+        app,
+        [
+            "prove-lock",
+            "--chain",
+            "8453",
+            "--vault",
+            "0x000000000000000000000000000000000000dEaD",
+            "--tx",
+            "0x" + "ab" * 32,
+            "--amount",
+            "250",
+            "--hotkey",
+            "bt1xyz",
+            "--slot",
+            "9",
+            "--pwd",
+            "0x" + "44" * 32,
+        ],
+    )
+
+    assert result.exit_code == 0
+    # Should show message structure for external signing
+    assert "Sign the EIP-712 message externally" in result.stdout or "Message structure" in result.stdout
+    assert "Lock proof submitted successfully." in result.stdout
+    
+    payload = captured["payload"]
+    assert payload["signature"] == "0x" + "77" * 65
+
+
+def test_generate_eip712_signature_helper(monkeypatch):
+    """Test the _generate_eip712_signature helper function directly."""
+    from eth_account import Account
+    from cartha_cli.main import _generate_eip712_signature
+    
+    # Generate test account
+    test_account = Account.create()
+    test_private_key = test_account.key.hex()
+    test_address = test_account.address
+    
+    # Test signature generation
+    signature, derived_address = _generate_eip712_signature(
+        chain_id=8453,
+        vault_address="0x000000000000000000000000000000000000dEaD",
+        miner_hotkey="bt1test",
+        slot_uid="123",
+        tx_hash="0x" + "ab" * 32,
+        amount=250000000,
+        password="0x" + "44" * 32,
+        timestamp=1234567890,
+        private_key=test_private_key,
+    )
+    
+    assert signature.startswith("0x")
+    assert len(signature) == 132  # 0x + 130 hex chars
+    assert derived_address.lower() == test_address.lower()
+
+
+def test_prove_lock_payload_file_with_signature(monkeypatch):
+    """Test prove-lock with payload file that includes signature (backward compatibility)."""
+    import tempfile
+    import json
+    
+    captured = {}
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    
+    # Create a temporary payload file
+    payload_data = {
+        "chain": 8453,
+        "vault": "0x000000000000000000000000000000000000dEaD",
+        "tx": "0x" + "ab" * 32,
+        "amount": 250000000,
+        "amountNormalized": "250",
+        "hotkey": "bt1xyz",
+        "slot": "9",
+        "miner_evm": "0x1111111111111111111111111111111111111111",
+        "password": "0x" + "44" * 32,
+        "signature": "0x" + "88" * 65,
+        "timestamp": 1234567890,
+    }
+    
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+        json.dump(payload_data, f)
+        payload_file = f.name
+    
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "prove-lock",
+                "--payload-file",
+                payload_file,
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert "Lock proof submitted successfully." in result.stdout
+        
+        payload = captured["payload"]
+        assert payload["minerHotkey"] == "bt1xyz"
+        assert payload["slotUID"] == "9"
+        assert payload["amount"] == 250000000
+        assert payload["signature"] == "0x" + "88" * 65
+    finally:
+        import os
+        os.unlink(payload_file)
