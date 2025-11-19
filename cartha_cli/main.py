@@ -15,6 +15,7 @@ import typer
 from rich import box
 from rich.console import Console
 from rich.json import JSON
+from rich.prompt import Confirm
 from rich.rule import Rule
 from rich.table import Table
 from web3 import Web3
@@ -1266,11 +1267,55 @@ def prove_lock(
             signature=signature,
             timestamp=timestamp,
         )
+
+        # Show summary and confirm before submission
+        if not json_output:
+            human_amount = Decimal(payload["amount"]) / Decimal(10**6)
+            amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
+            console.print("\n[bold cyan]Lock Proof Summary:[/]")
+            summary_table = Table(show_header=False, box=box.SIMPLE)
+            summary_table.add_column(style="cyan")
+            summary_table.add_column(style="yellow")
+            summary_table.add_row("Chain ID", str(chain))
+            summary_table.add_row("Vault", vault)
+            summary_table.add_row("Transaction", tx)
+            summary_table.add_row(
+                "Amount", f"{amount_str} USDC ({payload['amount']} base units)"
+            )
+            summary_table.add_row("Hotkey", hotkey)
+            summary_table.add_row("Slot UID", slot_id)
+            summary_table.add_row("EVM Address", miner_evm)
+            summary_table.add_row(
+                "Signature",
+                payload["signature"][:20] + "..." + payload["signature"][-10:],
+            )
+            console.print(summary_table)
+            console.print()
+        else:
+            # In JSON mode, show a simple summary before confirmation
+            console.print(
+                f"[dim]Preparing to submit lock proof: "
+                f"chain={chain}, vault={vault}, amount={payload['amount']}, "
+                f"hotkey={hotkey}, slot={slot_id}[/]"
+            )
+
+        # Use Rich Confirm for styled prompt
+        if not Confirm.ask(
+            "[bold yellow]Submit this lock proof to the verifier?[/]", default=True
+        ):
+            if json_output:
+                # In JSON mode, output cancellation as JSON
+                console.print(json.dumps({"ok": False, "cancelled": True}))
+            else:
+                console.print("[bold yellow]Submission cancelled.[/]")
+            raise typer.Exit(code=0)
+
         _send_lock_proof(payload, json_output)
         if not json_output:
             human_amount = Decimal(payload["amount"]) / Decimal(10**6)
             # Format amount nicely without scientific notation
             amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
+            console.print(f"\n[bold green]✓ Lock proof submitted successfully[/]")
             console.print(
                 f"[bold cyan]Amount submitted[/]: {amount_str} USDC "
                 f"({payload['amount']} base units)"
