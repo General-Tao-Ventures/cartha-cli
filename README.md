@@ -1,82 +1,69 @@
 # Cartha CLI
 
-Miner-facing command line tool for the Cartha subnet. The CLI wraps Bittensor wallet operations,
-subnet registration, verifier interactions, and signature helpers so miners can prove hotkey
-ownership and submit LockProofs without touching raw cryptography.
+**The official command-line interface for Cartha subnet miners.** Streamline your mining operations with a powerful, user-friendly CLI that handles hotkey registration, pair password management, and lock proof submissions—all without touching raw cryptography.
 
-## Requirements
+## Why Cartha CLI?
 
-- Python 3.11
-- [`uv`](https://github.com/astral-sh/uv) or `pip` for dependency management
+Cartha CLI simplifies the entire miner workflow on the Cartha subnet:
+
+- **🔐 Secure Registration** - Register your hotkey on the Cartha subnet with burned TAO registration
+- **🔑 Password Management** - Automatically generate and manage pair passwords for verifier authentication
+- **💼 Lock Proof Submission** - Submit EIP-712 signed lock proofs for your USDC deposits with ease
+- **🛡️ Built-in Security** - Local challenge/response authentication ensures only you can access sensitive operations
+- **⚡ Interactive Workflows** - Smart prompts guide you through each step, with support for both local and external wallet signing
 
 ## Quick Start
 
 ```bash
-uv sync              # install dependencies into .venv
-uv run cartha        # show CLI help
+# Install dependencies
+uv sync
+
+# Show available commands
+uv run cartha
+
+# Get started with registration
+uv run cartha register --help
 ```
 
-Run tests with `uv run pytest` or `make test` once the task list is implemented.
+## Requirements
 
-## Environment
+- Python 3.11
+- [`uv`](https://github.com/astral-sh/uv) for dependency management
+- Bittensor and Bittensor wallets
 
-Set the following environment variables before invoking commands that reach the verifier:
+## Commands Overview
 
-| Variable | Description |
-| --- | --- |
-| `CARTHA_NETWORK` / `CARTHA_NETUID` | Bittensor network + subnet netuid. Defaults: `finney`/`35`. |
-| `CARTHA_VERIFIER_URL` | Verifier endpoint URL (default `http://127.0.0.1:8000`). |
+### `cartha register`
 
-Wallet files must already exist under the Bittensor wallet path (or be available via `BITTENSOR_WALLET_PATH`).
+Register your hotkey on the Cartha subnet and obtain your pair password. This command handles the entire registration process, including burned TAO registration and automatic pair password generation from the verifier. The pair password is essential for all subsequent verifier interactions.
 
-## Ownership Challenge Flow
+### `cartha pair status`
 
-Commands that expose sensitive information (`cartha pair status`, the post-registration password fetch)
-perform a local challenge/response handshake:
+Check the status of your miner pair on the Cartha Network. This command signs a challenge message with your hotkey to prove ownership, then retrieves pair metadata including verification status, lock amounts, and password issuance timestamps.
 
-1. The CLI loads your wallet (`--wallet-name`, `--wallet-hotkey`) and confirms it owns the supplied hotkey.
-2. A challenge string is generated:
+### `cartha prove-lock`
 
-  ```json
-   cartha-pair-auth|network:{network}|netuid:{netuid}|slot:{slot}|hotkey:{hotkey}|ts:{unix_ts}
-  ```
+The happy path. Submit a lock proof for your USDC deposit to the verifier. This command handles the entire EIP-712 signing workflow, supporting both local signing (with your EVM private key) and external signing (MetaMask, hardware wallets, etc.).
 
-3.The hotkey signs the challenge via `wallet.hotkey.sign(...)` and the CLI verifies the signature locally.
-4. The signed payload plus bearer token is POSTed to the verifier (`/v1/pair/status` or `/v1/pair/password/retrieve`).
-5. The challenge expires 120 seconds after issuance; the CLI prints the expiry timestamp.
+### `cartha claim-deposit` - *`Not Recommended!`*
 
-If the wallet is locked or the hotkey/UID do not match the on-chain metagraph, the CLI exits with guidance.
+An alias for `prove-lock` designed for deposit-first workflows. Use this command if you've already made your USDC deposit and want to claim it by submitting a lock proof.
 
-## Key Commands
+### `cartha version`
 
-```bash
-# Register a hotkey via burned registration and print UID + pair password
-cartha register \
-  --wallet-name cold --wallet-hotkey hot \
-  --network finney --netuid 35
+Display the CLI version information.
 
-# Query pair status once registered (requires unlocked wallet)
-cartha pair status \
-  --wallet-name cold --wallet-hotkey hot \
-  --hotkey bt1... --slot 123
+## Documentation
 
-# Submit a LockProof (signature can be generated locally or provided externally)
-cartha prove-lock \
-  --chain 8453 \
-  --vault 0xVAULT \
-  --tx 0xLOCKTX \
-  --amount 250 \
-  --hotkey bt1... \
-  --slot 123 \
-  --pwd 0xPAIRPWD
-```
+- **[Command Reference](docs/COMMANDS.md)** - Detailed documentation for all commands and their arguments
+- **[EIP-712 Signing Guide](docs/EIP712_SIGNING.md)** - Complete guide for signing lock proofs
+- **[Testnet Guide](testnet/README.md)** - Testnet-specific instructions and demo scripts
+- **[Feedback & Support](docs/FEEDBACK.md)** - Get help and provide feedback
 
-If you don't provide `--signature`, the CLI will prompt you to either:
-- Sign locally with your EVM private key (if `CARTHA_EVM_PK` is set)
-- Provide a signature from an external wallet (MetaMask, hardware wallet, etc.)
+## Contributing
 
-See [docs/EIP712_SIGNING.md](docs/EIP712_SIGNING.md) for detailed signing instructions.
+We welcome contributions! Please see our [Feedback & Support](docs/FEEDBACK.md) page for ways to get involved.
 
-`cartha claim-deposit` is an alias of `prove-lock` for deposit-first workflows.
+---
 
-**Note**: For testnet/demo purposes, you can use `testnet/build_lock_proof.py` to generate mock signatures. See [testnet/README.md](testnet/README.md) for testnet-specific instructions.
+**Made with ❤ by GTV**

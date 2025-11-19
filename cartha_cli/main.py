@@ -196,7 +196,7 @@ def _print_root_help() -> None:
     console.print()
 
     env_table = Table(title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
-    env_table.add_row("CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)")
+    env_table.add_row("CARTHA_VERIFIER_URL", "Verifier endpoint (default https://cartha-verifier-826542474079.us-central1.run.app)")
     env_table.add_row("CARTHA_NETWORK / CARTHA_NETUID", "Default network + subnet (finney / 35).")
     env_table.add_row(
         "BITTENSOR_WALLET_PATH",
