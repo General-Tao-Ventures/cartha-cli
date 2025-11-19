@@ -8,6 +8,15 @@ This guide will help you set up and use the Cartha CLI on the public testnet. Th
 - [`uv`](https://github.com/astral-sh/uv) package manager (or `pip`)
 - Bittensor wallet (for subnet registration)
 - Access to the testnet verifier URL
+- Testnet TAO (required for subnet registration)
+
+### Getting Testnet TAO
+
+You'll need testnet TAO to register your hotkey to the subnet. Get testnet TAO from the faucet:
+
+🔗 **Testnet TAO Faucet**: https://app.minersunion.ai/testnet-faucet
+
+Simply visit the faucet and request testnet TAO to your wallet address. You'll need TAO in your wallet to pay for subnet registration.
 
 ### Installing `uv`
 
@@ -85,6 +94,12 @@ curl "${CARTHA_VERIFIER_URL}/health"
 ```
 
 ## Testnet Workflow
+
+### Step 0: Get Testnet TAO (if needed)
+
+Before registering, make sure you have testnet TAO in your wallet. If you need testnet TAO, visit the faucet:
+
+🔗 **Testnet TAO Faucet**: https://app.minersunion.ai/testnet-faucet
 
 ### Step 1: Register Your Hotkey
 
