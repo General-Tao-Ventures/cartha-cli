@@ -224,6 +224,10 @@ def main(
     console.print(f"\n[bold green]✓ Saved[/] payload to [yellow]{output}[/]")
     console.print("\n[bold cyan]Command to submit lock proof:[/]\n")
     console.print(
+        f"[green]uv run cartha prove-lock --payload-file {output}[/]"
+    )
+    console.print("\n[dim]Or manually with all parameters:[/]\n")
+    console.print(
         f"[green]uv run cartha prove-lock \\\n"
         f"  --chain {chain} \\\n"
         f"  --vault {vault} \\\n"

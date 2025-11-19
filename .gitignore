@@ -6,3 +6,10 @@ __pycache__/
 .venv/
 .env
 .DS_Store
+
+# Ignore testnet output files (contains sensitive payloads, signatures, and keys)
+testnet/outputs/
+**/lock_proof_payload.json
+**/evm_key.json
+**/demo_outputs/
+**/outputs/
