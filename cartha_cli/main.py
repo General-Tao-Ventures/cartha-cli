@@ -6,6 +6,7 @@ import json
 import os
 import time
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from pathlib import Path
 from typing import Any
@@ -109,6 +110,49 @@ def _normalize_hex(value: str, prefix: str = "0x") -> str:
     return value
 
 
+def _format_timestamp(ts: int | float | str | None) -> str:
+    """Format a timestamp showing both UTC and local time.
+
+    Args:
+        ts: Unix timestamp (seconds) as int, float, or string, or None for current time
+
+    Returns:
+        Formatted string like "2024-01-01 12:00:00 UTC (2024-01-01 07:00:00 EST)"
+    """
+    if ts is None:
+        ts = time.time()
+    elif isinstance(ts, str):
+        try:
+            ts = float(ts)
+        except ValueError:
+            return str(ts)  # Return as-is if not parseable
+
+    try:
+        ts_float = float(ts)
+        utc_dt = datetime.fromtimestamp(ts_float, tz=timezone.utc)
+
+        # Get local timezone
+        try:
+            local_tz = ZoneInfo("local")
+        except Exception:
+            # Fallback if zoneinfo fails (shouldn't happen on Python 3.11+)
+            local_tz = datetime.now().astimezone().tzinfo
+
+        local_dt = utc_dt.astimezone(local_tz)
+
+        # Format both times
+        utc_str = utc_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+        local_str = local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+        return f"{utc_str} ({local_str})"
+    except (ValueError, OSError, OverflowError):
+        # Fallback to simple ISO format if anything fails
+        try:
+            return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+        except Exception:
+            return str(ts)
+
+
 def _usdc_to_base_units(value: str) -> int:
     try:
         decimal_value = Decimal(value.strip())
@@ -172,8 +216,11 @@ def _print_root_help() -> None:
 
 
 def _log_endpoint_banner() -> None:
-    if settings.verifier_url.startswith("http://127.0.0.1"):
+    verifier_url = settings.verifier_url.lower()
+    if verifier_url.startswith("http://127.0.0.1"):
         console.print("[bold cyan]Using local verifier endpoint[/]")
+    elif "cartha-verifier-826542474079.us-central1.run.app" in verifier_url:
+        console.print("[bold cyan]Using Cartha Testnet Verifier[/]")
     else:
         console.print("[bold cyan]Using Cartha network verifier[/]")
 
@@ -331,7 +378,7 @@ def _build_pair_auth_payload(
         raise typer.Exit(code=1)
 
     expires_at = timestamp + CHALLENGE_TTL_SECONDS
-    expiry_time = datetime.fromtimestamp(expires_at, tz=timezone.utc).isoformat()
+    expiry_time = _format_timestamp(expires_at)
     console.print(
         "[bold green]Ownership challenge signed[/] "
         f"(expires in {CHALLENGE_TTL_SECONDS}s at {expiry_time})."
@@ -793,7 +840,27 @@ def pair_status(
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
     if issued_at:
-        table.add_row("Password issued at", issued_at)
+        # Try to parse and format the timestamp
+        try:
+            if isinstance(issued_at, (int, float)) or (
+                isinstance(issued_at, str) and issued_at.isdigit()
+            ):
+                # Numeric timestamp
+                formatted_time = _format_timestamp(issued_at)
+            elif isinstance(issued_at, str):
+                # Try parsing as ISO format datetime string
+                try:
+                    dt = datetime.fromisoformat(issued_at.replace("Z", "+00:00"))
+                    timestamp = dt.timestamp()
+                    formatted_time = _format_timestamp(timestamp)
+                except (ValueError, AttributeError):
+                    # If parsing fails, display as-is
+                    formatted_time = issued_at
+            else:
+                formatted_time = str(issued_at)
+            table.add_row("Password issued at", formatted_time)
+        except Exception:
+            table.add_row("Password issued at", str(issued_at))
     if password:
         table.add_row("Pair password", password)
     console.print(table)
@@ -1347,7 +1414,7 @@ def prove_lock(
         if chain is None:
             while True:
                 try:
-                    chain_input = typer.prompt("Chain ID", show_default=False)
+                    chain_input = typer.prompt("\nChain ID", show_default=False)
                     chain = int(chain_input)
                     if chain <= 0:
                         console.print(
