@@ -14,7 +14,7 @@ This guide will help you set up and use the Cartha CLI on the public testnet. Th
 
 You'll need testnet TAO to register your hotkey to the subnet. Get testnet TAO from the faucet:
 
-🔗 **Testnet TAO Faucet**: https://app.minersunion.ai/testnet-faucet
+🔗 **Testnet TAO Faucet**: <https://app.minersunion.ai/testnet-faucet>
 
 Simply visit the faucet and request testnet TAO to your wallet address. You'll need TAO in your wallet to pay for subnet registration.
 
@@ -23,16 +23,19 @@ Simply visit the faucet and request testnet TAO to your wallet address. You'll n
 If you don't have `uv` installed, you can install it with:
 
 **macOS/Linux:**
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 **Or via pip:**
+
 ```bash
 pip install uv
 ```
@@ -51,6 +54,7 @@ uv sync  # Creates .venv automatically and installs dependencies
 ```
 
 Then use `uv run` to execute commands (it automatically uses the project's virtual environment):
+
 ```bash
 uv run cartha --help  # Runs in the project's virtual environment
 ```
@@ -99,7 +103,7 @@ curl "${CARTHA_VERIFIER_URL}/health"
 
 Before registering, make sure you have testnet TAO in your wallet. If you need testnet TAO, visit the faucet:
 
-🔗 **Testnet TAO Faucet**: https://app.minersunion.ai/testnet-faucet
+🔗 **Testnet TAO Faucet**: <https://app.minersunion.ai/testnet-faucet>
 
 ### Step 1: Register Your Hotkey
 
@@ -114,12 +118,14 @@ uv run cartha register \
 ```
 
 This will:
+
 - Register your hotkey to subnet 78 (testnet)
 - Fetch your slot UID
 - Retrieve your pair password
 - Display your registration details
 
 **Save the output** - you'll need:
+
 - Slot UID
 - Pair password (starts with `0x`)
 
@@ -152,6 +158,7 @@ uv run python testnet/build_lock_proof.py \
 ```
 
 This will:
+
 - Generate a mock lock proof payload
 - Sign it with your demo EVM key
 - Save the payload to `testnet/outputs/lock_proof_payload.json`
@@ -200,6 +207,7 @@ This folder contains helper scripts for testing the Cartha CLI on the public tes
 Generates a throwaway EVM keypair for demo purposes. This key is used to sign lock proofs in testnet mode.
 
 **Usage:**
+
 ```bash
 # From cartha-cli repository root
 uv run python testnet/create_demo_evm_key.py --output testnet/outputs/evm_key.json
@@ -210,6 +218,7 @@ export CARTHA_DEMO_EVM_ADDRESS=$(jq -r .CARTHA_DEMO_EVM_ADDRESS testnet/outputs/
 ```
 
 **Options:**
+
 - `--output` - Path to write JSON blob containing `CARTHA_EVM_PK` and address
 - `--overwrite` - Allow overwriting an existing output file
 
@@ -218,6 +227,7 @@ export CARTHA_DEMO_EVM_ADDRESS=$(jq -r .CARTHA_DEMO_EVM_ADDRESS testnet/outputs/
 Assembles and signs a demo LockProof payload with mock data. This creates a lock proof that can be submitted to the testnet verifier.
 
 **Usage:**
+
 ```bash
 # From cartha-cli repository root
 uv run python testnet/build_lock_proof.py \
@@ -229,6 +239,7 @@ uv run python testnet/build_lock_proof.py \
 ```
 
 **Options:**
+
 - `--chain` - EVM chain ID (default: 31337 for demo)
 - `--vault` - Vault contract address (default: `0x00000000000000000000000000000000000000aa`)
 - `--tx` - Transaction hash (default: mock hash)
@@ -309,6 +320,7 @@ uv run cartha register \
 **Problem**: CLI can't connect to verifier
 
 **Solution**:
+
 ```bash
 # Verify environment variable is set
 echo $CARTHA_VERIFIER_URL
@@ -325,6 +337,7 @@ export CARTHA_VERIFIER_URL="https://cartha-verifier-826542474079.us-central1.run
 **Problem**: Pair password mismatch
 
 **Solution**:
+
 - Re-register to get a new pair password
 - Ensure you're using the correct hotkey/slot combination
 - Check that the verifier HMAC key hasn't changed
@@ -334,6 +347,7 @@ export CARTHA_VERIFIER_URL="https://cartha-verifier-826542474079.us-central1.run
 **Problem**: CLI can't find your Bittensor wallet
 
 **Solution**:
+
 ```bash
 # Check default wallet location
 ls ~/.bittensor/wallets/
@@ -347,6 +361,7 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 **Problem**: Can't connect to Bittensor network
 
 **Solution**:
+
 - Verify `CARTHA_NETWORK` is set to `"test"` for testnet
 - Check your internet connection
 - Try using a VPN if network is blocked
@@ -356,6 +371,7 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 **Problem**: Lock proof signature is invalid
 
 **Solution**:
+
 - Ensure `CARTHA_EVM_PK` matches the key used to sign
 - Regenerate the lock proof with `build_lock_proof.py`
 - Verify the signature in the payload JSON
