@@ -5,11 +5,11 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
+from datetime import UTC, datetime
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
+from zoneinfo import ZoneInfo
 
 import bittensor as bt
 import typer
@@ -69,7 +69,7 @@ def _trace_enabled() -> bool:
     return _TRACE_ENABLED
 
 
-def _exit_with_error(message: str, code: int = 1) -> None:
+def _exit_with_error(message: str, code: int = 1) -> NoReturn:
     console.print(f"[bold red]{message}[/]")
     raise typer.Exit(code=code)
 
@@ -129,14 +129,20 @@ def _format_timestamp(ts: int | float | str | None) -> str:
 
     try:
         ts_float = float(ts)
-        utc_dt = datetime.fromtimestamp(ts_float, tz=timezone.utc)
+        utc_dt = datetime.fromtimestamp(ts_float, tz=UTC)
 
         # Get local timezone
         try:
-            local_tz = ZoneInfo("local")
+            local_tz: ZoneInfo = ZoneInfo("local")
         except Exception:
             # Fallback if zoneinfo fails (shouldn't happen on Python 3.11+)
-            local_tz = datetime.now().astimezone().tzinfo
+            fallback_tz = datetime.now().astimezone().tzinfo
+            if fallback_tz is None:
+                # Ultimate fallback to UTC
+                local_tz = ZoneInfo("UTC")
+            else:
+                # Type ignore: mypy doesn't understand that ZoneInfo is compatible with tzinfo
+                local_tz = fallback_tz  # type: ignore[assignment]
 
         local_dt = utc_dt.astimezone(local_tz)
 
@@ -148,7 +154,7 @@ def _format_timestamp(ts: int | float | str | None) -> str:
     except (ValueError, OSError, OverflowError):
         # Fallback to simple ISO format if anything fails
         try:
-            return datetime.fromtimestamp(float(ts), tz=timezone.utc).isoformat()
+            return datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
         except Exception:
             return str(ts)
 
@@ -182,30 +188,16 @@ def _print_root_help() -> None:
 
     commands = Table(title="Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
     commands.add_row("[green]version[/]", "Show CLI version.")
-    commands.add_row(
-        "[green]register[/]", "Register a hotkey and fetch the pair password."
-    )
-    commands.add_row(
-        "[green]pair status[/]", "Sign a challenge and display pair metadata."
-    )
-    commands.add_row(
-        "[green]prove-lock[/]", "Submit an externally signed LockProof payload."
-    )
-    commands.add_row(
-        "[green]claim-deposit[/]", "Alias for prove-lock (deposit-first flow)."
-    )
+    commands.add_row("[green]register[/]", "Register a hotkey and fetch the pair password.")
+    commands.add_row("[green]pair status[/]", "Sign a challenge and display pair metadata.")
+    commands.add_row("[green]prove-lock[/]", "Submit an externally signed LockProof payload.")
+    commands.add_row("[green]claim-deposit[/]", "Alias for prove-lock (deposit-first flow).")
     console.print(commands)
     console.print()
 
-    env_table = Table(
-        title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False
-    )
-    env_table.add_row(
-        "CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)"
-    )
-    env_table.add_row(
-        "CARTHA_NETWORK / CARTHA_NETUID", "Default network + subnet (finney / 35)."
-    )
+    env_table = Table(title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
+    env_table.add_row("CARTHA_VERIFIER_URL", "Verifier endpoint (default http://127.0.0.1:8000)")
+    env_table.add_row("CARTHA_NETWORK / CARTHA_NETUID", "Default network + subnet (finney / 35).")
     env_table.add_row(
         "BITTENSOR_WALLET_PATH",
         "Override wallet path if keys are not in the default location.",
@@ -283,9 +275,7 @@ def _ensure_pair_registered(
         metagraph = subtensor.metagraph(netuid)
         slot_index = int(slot)
         if slot_index < 0 or slot_index >= len(metagraph.hotkeys):
-            console.print(
-                f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid})."
-            )
+            console.print(f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid}).")
             raise typer.Exit(code=1)
         registered_hotkey = metagraph.hotkeys[slot_index]
         if registered_hotkey != hotkey:
@@ -302,7 +292,7 @@ def _ensure_pair_registered(
             console.print(
                 "[yellow]This might be a DNS/network connectivity issue. Please check your internet connection.[/]"
             )
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
         # Re-raise other exceptions as-is
         raise
     finally:
@@ -326,19 +316,13 @@ def _ensure_pair_registered(
             pass
 
 
-def _load_wallet(
-    wallet_name: str, wallet_hotkey: str, expected_hotkey: str | None
-) -> bt.wallet:
+def _load_wallet(wallet_name: str, wallet_hotkey: str, expected_hotkey: str | None) -> bt.wallet:
     try:
         wallet = get_wallet(wallet_name, wallet_hotkey)
     except bt.KeyFileError as exc:
-        _handle_wallet_exception(
-            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
-        )
+        _handle_wallet_exception(wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc)
     except Exception as exc:  # pragma: no cover - defensive
-        _handle_unexpected_exception(
-            f"Failed to load wallet '{wallet_name}/{wallet_hotkey}'", exc
-        )
+        _handle_unexpected_exception(f"Failed to load wallet '{wallet_name}/{wallet_hotkey}'", exc)
 
     if expected_hotkey and wallet.hotkey.ss58_address != expected_hotkey:
         _exit_with_error(
@@ -360,9 +344,7 @@ def _build_pair_auth_payload(
 ) -> dict[str, Any]:
     wallet = _load_wallet(wallet_name, wallet_hotkey, hotkey)
     if not skip_metagraph_check:
-        _ensure_pair_registered(
-            network=network, netuid=netuid, slot=slot, hotkey=hotkey
-        )
+        _ensure_pair_registered(network=network, netuid=netuid, slot=slot, hotkey=hotkey)
 
     timestamp = int(time.time())
     message = (
@@ -415,15 +397,13 @@ def _request_pair_status_or_password(
             return fetch_pair_password(**request_kwargs)
     except VerifierError as exc:
         console.print(f"[bold red]Verifier request failed[/]: {exc}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
     raise RuntimeError(f"Unknown mode {mode}")  # pragma: no cover
 
 
 @app.command("register")
 def register(
-    network: str = typer.Option(
-        settings.network, "--network", help="Bittensor network name."
-    ),
+    network: str = typer.Option(settings.network, "--network", help="Bittensor network name."),
     wallet_name: str = typer.Option(
         None,
         "--wallet-name",
@@ -446,9 +426,7 @@ def register(
         "--burned/--pow",
         help="Burned registration by default; pass --pow to run PoW registration.",
     ),
-    cuda: bool = typer.Option(
-        False, "--cuda", help="Enable CUDA for PoW registration."
-    ),
+    cuda: bool = typer.Option(False, "--cuda", help="Enable CUDA for PoW registration."),
 ) -> None:
     """Register the specified hotkey on the target subnet and print the UID."""
 
@@ -460,9 +438,7 @@ def register(
         subtensor = get_subtensor(network)
         wallet = get_wallet(wallet_name, wallet_hotkey)
     except bt.KeyFileError as exc:
-        _handle_wallet_exception(
-            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
-        )
+        _handle_wallet_exception(wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc)
     except typer.Exit:
         raise
     except Exception as exc:
@@ -474,9 +450,7 @@ def register(
     # Check if already registered
     if subtensor.is_hotkey_registered(hotkey_ss58, netuid=netuid):
         neuron = subtensor.get_neuron_for_pubkey_and_subnet(hotkey_ss58, netuid)
-        uid = (
-            None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
-        )
+        uid = None if getattr(neuron, "is_null", False) else getattr(neuron, "uid", None)
         if uid is not None:
             console.print(f"[bold yellow]Hotkey already registered[/]. UID: {uid}")
             return
@@ -490,9 +464,7 @@ def register(
             registration_cost = get_burn_cost(network, netuid)
         except Exception as exc:
             # Log warning but continue - cost may not be available on all networks
-            console.print(
-                f"[bold yellow]Warning: Could not fetch registration cost[/]: {exc}"
-            )
+            console.print(f"[bold yellow]Warning: Could not fetch registration cost[/]: {exc}")
 
     try:
         balance_obj = subtensor.get_balance(coldkey_ss58)
@@ -525,9 +497,7 @@ def register(
         console.print(f"\n[bold]Your balance is:[/] {balance:.4f} τ")
 
     if registration_cost is not None:
-        console.print(
-            f"[bold]The cost to register by recycle is[/] {registration_cost:.4f} τ"
-        )
+        console.print(f"[bold]The cost to register by recycle is[/] {registration_cost:.4f} τ")
 
     # Confirmation prompt
     if not typer.confirm("\nDo you want to continue?", default=False):
@@ -546,9 +516,7 @@ def register(
             cuda=cuda,
         )
     except bt.KeyFileError as exc:
-        _handle_wallet_exception(
-            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
-        )
+        _handle_wallet_exception(wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc)
     except typer.Exit:
         raise
     except Exception as exc:
@@ -630,9 +598,7 @@ def register(
         except typer.Exit:
             raise
         except Exception as exc:
-            _handle_unexpected_exception(
-                "Verifier password registration failed unexpectedly", exc
-            )
+            _handle_unexpected_exception("Verifier password registration failed unexpectedly", exc)
 
         pair_pwd = password_payload.get("pwd")
         if pair_pwd:
@@ -648,9 +614,7 @@ def register(
                 "Run 'cartha pair status' to check availability."
             )
     else:
-        console.print(
-            "[bold yellow]UID not yet available[/] (node may still be syncing)."
-        )
+        console.print("[bold yellow]UID not yet available[/] (node may still be syncing).")
 
 
 @pair_app.command("status")
@@ -678,13 +642,9 @@ def pair_status(
         help="Subnet UID assigned to the miner.",
         show_default=False,
     ),
-    network: str = typer.Option(
-        settings.network, "--network", help="Bittensor network name."
-    ),
+    network: str = typer.Option(settings.network, "--network", help="Bittensor network name."),
     netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit the raw JSON response."
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit the raw JSON response."),
 ) -> None:
     """Show the verifier state for a miner pair."""
     try:
@@ -692,9 +652,7 @@ def pair_status(
         wallet = _load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
         slot_id = str(slot)
-        _ensure_pair_registered(
-            network=network, netuid=netuid, slot=slot_id, hotkey=hotkey
-        )
+        _ensure_pair_registered(network=network, netuid=netuid, slot=slot_id, hotkey=hotkey)
 
         console.print("[bold cyan]Signing hotkey ownership challenge...[/]")
         auth_payload = _build_pair_auth_payload(
@@ -718,9 +676,7 @@ def pair_status(
                 auth_payload=auth_payload,
             )
     except bt.KeyFileError as exc:
-        _handle_wallet_exception(
-            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
-        )
+        _handle_wallet_exception(wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc)
     except typer.Exit:
         raise
     except Exception as exc:
@@ -739,9 +695,7 @@ def pair_status(
 
     if needs_password:
         if state == "unknown":
-            console.print(
-                "[bold yellow]Verifier has no password record for this slot yet.[/]"
-            )
+            console.print("[bold yellow]Verifier has no password record for this slot yet.[/]")
         else:
             console.print(
                 "[bold yellow]Pair is registered but no verifier password has been issued yet.[/]"
@@ -773,13 +727,11 @@ def pair_status(
                 )
             else:
                 console.print(f"[bold red]Password generation failed[/]: {message}")
-            raise typer.Exit(code=1)
+            raise typer.Exit(code=1) from None
         except typer.Exit:
             raise
         except Exception as exc:
-            _handle_unexpected_exception(
-                "Verifier password generation failed unexpectedly", exc
-            )
+            _handle_unexpected_exception("Verifier password generation failed unexpectedly", exc)
 
         console.print("[bold green]Pair password issued.[/]")
 
@@ -804,9 +756,7 @@ def pair_status(
             status["has_pwd"] = bool(password_payload and password_payload.get("pwd"))
             if password_payload:
                 status["pwd"] = password_payload.get("pwd")
-                status["issued_at"] = password_payload.get("issued_at") or status.get(
-                    "issued_at"
-                )
+                status["issued_at"] = password_payload.get("issued_at") or status.get("issued_at")
 
     sanitized = dict(status)
     sanitized.setdefault("state", "unknown")
@@ -831,7 +781,6 @@ def pair_status(
     state = sanitized.get("state", "").lower()
     if state in ("verified", "active"):
         verified_amount_usdc = sanitized.get("verified_lock_amount_usdc")
-        verified_amount_base = sanitized.get("verified_lock_amount_base_units")
         if verified_amount_usdc is not None:
             # Format amount nicely without scientific notation
             amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
@@ -951,9 +900,7 @@ def _generate_eip712_signature(
         Tuple of (signature, miner_evm_address)
     """
     if Account is None:
-        _exit_with_error(
-            "eth-account is required for EIP-712 signing. Install it with: uv sync"
-        )
+        _exit_with_error("eth-account is required for EIP-712 signing. Install it with: uv sync")
 
     # Normalize private key
     private_key_normalized = _normalize_hex(private_key)
@@ -1025,7 +972,7 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
             )
         else:
             console.print(f"[bold red]Lock proof rejected[/]: {error_msg}")
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from exc
 
     if json_output:
         console.print(JSON.from_data(response))
@@ -1035,7 +982,7 @@ def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
 
 @app.command("prove-lock")
 def prove_lock(
-    payload_file: Path | None = typer.Option(
+    payload_file: Path | None = typer.Option(  # noqa: B008
         None,
         "--payload-file",
         help="Path to JSON file generated by build_lock_proof.py. If provided, all other parameters are loaded from this file.",
@@ -1101,27 +1048,22 @@ def prove_lock(
         help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
         show_default=False,
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit the verifier response as JSON."
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit the verifier response as JSON."),
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
     try:
+        amount_base_units: int | None = None  # Initialize amount_base_units
         # If payload file is provided, load all values from it
         if payload_file is not None:
             if not payload_file.exists():
-                console.print(
-                    f"[bold red]Error:[/] Payload file not found: {payload_file}"
-                )
+                console.print(f"[bold red]Error:[/] Payload file not found: {payload_file}")
                 raise typer.Exit(code=1)
 
             try:
                 payload_data = json.loads(payload_file.read_text())
             except json.JSONDecodeError as exc:
-                console.print(
-                    f"[bold red]Error:[/] Invalid JSON in payload file: {exc}"
-                )
-                raise typer.Exit(code=1)
+                console.print(f"[bold red]Error:[/] Invalid JSON in payload file: {exc}")
+                raise typer.Exit(code=1) from exc
 
             # Extract values from payload file, using command-line args as overrides
             chain = chain if chain is not None else payload_data.get("chain")
@@ -1133,19 +1075,13 @@ def prove_lock(
                 try:
                     chain = int(chain)
                     if chain <= 0:
-                        console.print(
-                            "[bold red]Error:[/] Chain ID must be a positive integer"
-                        )
+                        console.print("[bold red]Error:[/] Chain ID must be a positive integer")
                         raise typer.Exit(code=1)
                 except (ValueError, TypeError):
-                    console.print(
-                        "[bold red]Error:[/] Chain ID must be a valid integer"
-                    )
-                    raise typer.Exit(code=1)
+                    console.print("[bold red]Error:[/] Chain ID must be a valid integer")
+                    raise typer.Exit(code=1) from None
             if vault is not None and not Web3.is_address(vault):
-                console.print(
-                    "[bold red]Error:[/] Vault address must be a valid EVM address"
-                )
+                console.print("[bold red]Error:[/] Vault address must be a valid EVM address")
                 raise typer.Exit(code=1)
             if tx is not None:
                 tx_normalized = _normalize_hex(tx)
@@ -1157,15 +1093,22 @@ def prove_lock(
                 tx = tx_normalized
             # Use amountNormalized if available, otherwise amount (which is in base units)
             if amount is None:
-                amount = payload_data.get("amountNormalized") or str(
-                    payload_data.get("amount", "")
-                )
+                amount = payload_data.get("amountNormalized") or str(payload_data.get("amount", ""))
+            # Convert amount to base units if it's a normalized string
+            if amount is not None and amount != "":
+                try:
+                    amount_as_int = int(float(amount))
+                    if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
+                        amount_base_units = amount_as_int
+                    else:
+                        # Treat as normalized USDC
+                        amount_base_units = _usdc_to_base_units(amount)
+                except (ValueError, InvalidOperation):
+                    # If not a valid number, try treating as normalized USDC
+                    amount_base_units = _usdc_to_base_units(amount)
             hotkey = hotkey if hotkey is not None else payload_data.get("hotkey")
             if hotkey is not None:
-                if (
-                    not (hotkey.startswith("bt1") or hotkey.startswith("5"))
-                    or len(hotkey) < 10
-                ):
+                if not (hotkey.startswith("bt1") or hotkey.startswith("5")) or len(hotkey) < 10:
                     console.print(
                         "[bold red]Error:[/] Hotkey must be a valid SS58 address (starts with 'bt1' or '5')"
                     )
@@ -1183,23 +1126,15 @@ def prove_lock(
                             )
                             raise typer.Exit(code=1)
                     except (ValueError, TypeError):
-                        console.print(
-                            "[bold red]Error:[/] Slot UID must be a valid integer"
-                        )
-                        raise typer.Exit(code=1)
+                        console.print("[bold red]Error:[/] Slot UID must be a valid integer")
+                        raise typer.Exit(code=1) from None
 
-            miner_evm = (
-                miner_evm if miner_evm is not None else payload_data.get("miner_evm")
-            )
+            miner_evm = miner_evm if miner_evm is not None else payload_data.get("miner_evm")
             if miner_evm is not None and not Web3.is_address(miner_evm):
-                console.print(
-                    "[bold red]Error:[/] Miner EVM address must be a valid EVM address"
-                )
+                console.print("[bold red]Error:[/] Miner EVM address must be a valid EVM address")
                 raise typer.Exit(code=1)
 
-            password = (
-                password if password is not None else payload_data.get("password")
-            )
+            password = password if password is not None else payload_data.get("password")
             if password is not None:
                 password_normalized = _normalize_hex(password)
                 if len(password_normalized) != 66:
@@ -1209,9 +1144,7 @@ def prove_lock(
                     raise typer.Exit(code=1)
                 password = password_normalized
 
-            signature = (
-                signature if signature is not None else payload_data.get("signature")
-            )
+            signature = signature if signature is not None else payload_data.get("signature")
             if signature is not None:
                 signature_normalized = _normalize_hex(signature)
                 if len(signature_normalized) != 132:
@@ -1221,9 +1154,7 @@ def prove_lock(
                     raise typer.Exit(code=1)
                 signature = signature_normalized
 
-            timestamp = (
-                timestamp if timestamp is not None else payload_data.get("timestamp")
-            )
+            timestamp = timestamp if timestamp is not None else payload_data.get("timestamp")
 
             # Validate that all required fields are present
             missing_fields = []
@@ -1257,15 +1188,47 @@ def prove_lock(
 
             console.print(f"[dim]Loaded payload from:[/] {payload_file}")
 
+        # Normalize hex fields if provided via CLI args (not from payload file)
+        if payload_file is None:
+            if signature is not None:
+                signature = _normalize_hex(signature)
+                if len(signature) != 132:  # 0x + 130 hex chars = 65 bytes
+                    console.print(
+                        "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+            if password is not None:
+                password = _normalize_hex(password)
+                if len(password) != 66:  # 0x + 64 hex chars = 32 bytes
+                    console.print(
+                        "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+            if tx is not None:
+                tx = _normalize_hex(tx)
+                if len(tx) != 66:  # 0x + 64 hex chars = 32 bytes
+                    console.print(
+                        "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+            if miner_evm is not None:
+                if not Web3.is_address(miner_evm):
+                    console.print(
+                        "[bold red]Error:[/] Miner EVM address must be a valid EVM address"
+                    )
+                    raise typer.Exit(code=1)
+                miner_evm = Web3.to_checksum_address(miner_evm)
+            if vault is not None:
+                if not Web3.is_address(vault):
+                    console.print("[bold red]Error:[/] Vault address must be a valid EVM address")
+                    raise typer.Exit(code=1)
+                vault = Web3.to_checksum_address(vault)
+
         # Ask about signature FIRST, before prompting for other fields
         # This makes the flow more logical: if user has signature, collect it and required fields
         # If not, collect all fields needed to generate signature
-        sign_locally: bool | None = (
-            None  # Will be set if user needs to generate signature
-        )
-        _private_key_for_signing: str | None = (
-            None  # Store private key if signing locally
-        )
+        sign_locally: bool | None = None  # Will be set if user needs to generate signature
+        _private_key_for_signing: str | None = None  # Store private key if signing locally
         if signature is None:
             has_signature = Confirm.ask(
                 "[bold cyan]Do you already have an EIP-712 signature?[/]", default=False
@@ -1273,13 +1236,9 @@ def prove_lock(
 
             if has_signature:
                 # User has signature from external wallet - collect signature and required fields
-                console.print(
-                    "\n[bold cyan]Please provide your signature and required fields:[/]"
-                )
+                console.print("\n[bold cyan]Please provide your signature and required fields:[/]")
                 while True:
-                    signature = typer.prompt(
-                        "EIP-712 signature (0x...)", show_default=False
-                    )
+                    signature = typer.prompt("EIP-712 signature (0x...)", show_default=False)
                     signature_normalized = _normalize_hex(signature)
                     # EIP-712 signature is 65 bytes = 0x + 130 hex chars
                     if len(signature_normalized) == 132:
@@ -1291,9 +1250,7 @@ def prove_lock(
 
                 if miner_evm is None:
                     while True:
-                        miner_evm = typer.prompt(
-                            "Miner EVM address", show_default=False
-                        )
+                        miner_evm = typer.prompt("Miner EVM address", show_default=False)
                         if Web3.is_address(miner_evm):
                             break
                         console.print(
@@ -1307,14 +1264,10 @@ def prove_lock(
 
                 if sign_locally:
                     # Get private key immediately and derive EVM address
-                    console.print(
-                        "\n[bold cyan]Please provide your EVM private key:[/]"
-                    )
+                    console.print("\n[bold cyan]Please provide your EVM private key:[/]")
                     private_key_from_env = os.getenv("CARTHA_EVM_PK")
                     if private_key_from_env:
-                        console.print(
-                            "[dim]Using CARTHA_EVM_PK from environment variable[/]"
-                        )
+                        console.print("[dim]Using CARTHA_EVM_PK from environment variable[/]")
                     else:
                         console.print(
                             "[dim]Tip:[/] Set CARTHA_EVM_PK environment variable to avoid prompting"
@@ -1335,9 +1288,7 @@ def prove_lock(
                         # Normalize and validate private key
                         try:
                             private_key_normalized = _normalize_hex(private_key)
-                            if (
-                                len(private_key_normalized) != 66
-                            ):  # 0x + 64 hex chars = 32 bytes
+                            if len(private_key_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
                                 console.print(
                                     "[bold red]Error:[/] Private key must be 32 bytes (0x + 64 hex characters)"
                                 )
@@ -1355,30 +1306,24 @@ def prove_lock(
                             derived_evm = Web3.to_checksum_address(account.address)
 
                             # Show derived address and confirm
-                            console.print(
-                                f"\n[bold cyan]Derived EVM address:[/] {derived_evm}"
-                            )
+                            console.print(f"\n[bold cyan]Derived EVM address:[/] {derived_evm}")
                             if miner_evm is not None:
                                 if miner_evm.lower() != derived_evm.lower():
                                     console.print(
                                         f"[yellow]Warning:[/] Provided EVM address ({miner_evm}) "
                                         f"does not match private key address ({derived_evm})"
                                     )
-                                    if not typer.confirm(
-                                        "Continue anyway?", default=False
-                                    ):
+                                    if not typer.confirm("Continue anyway?", default=False):
                                         # If using env var, clear it so we re-prompt
                                         if private_key_from_env:
                                             private_key_from_env = None
                                         continue
                                 else:
-                                    console.print(
-                                        "[bold green]✓ EVM address matches[/]"
-                                    )
+                                    console.print("[bold green]✓ EVM address matches[/]")
                             else:
                                 # Confirm the derived address is correct
                                 if not Confirm.ask(
-                                    f"[bold cyan]Is this your correct EVM address?[/]",
+                                    "[bold cyan]Is this your correct EVM address?[/]",
                                     default=True,
                                 ):
                                     console.print(
@@ -1417,15 +1362,11 @@ def prove_lock(
                     chain_input = typer.prompt("\nChain ID", show_default=False)
                     chain = int(chain_input)
                     if chain <= 0:
-                        console.print(
-                            "[bold red]Error:[/] Chain ID must be a positive integer"
-                        )
+                        console.print("[bold red]Error:[/] Chain ID must be a positive integer")
                         continue
                     break
                 except ValueError:
-                    console.print(
-                        "[bold red]Error:[/] Chain ID must be a valid integer"
-                    )
+                    console.print("[bold red]Error:[/] Chain ID must be a valid integer")
 
         if vault is None:
             while True:
@@ -1461,18 +1402,20 @@ def prove_lock(
                 except Exception as exc:
                     console.print(f"[bold red]Error:[/] Invalid amount: {exc}")
         else:
-            # Auto-detect: if amount as int would be >= 1e9, assume base units
-            # Otherwise, treat as normalized USDC
-            try:
-                amount_as_int = int(float(amount))
-                if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
-                    amount_base_units = amount_as_int
-                else:
-                    # Treat as normalized USDC
+            # Only convert if amount_base_units is not already set (e.g., from payload file)
+            if amount_base_units is None:
+                # Auto-detect: if amount as int would be >= 1e9, assume base units
+                # Otherwise, treat as normalized USDC
+                try:
+                    amount_as_int = int(float(amount))
+                    if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
+                        amount_base_units = amount_as_int
+                    else:
+                        # Treat as normalized USDC
+                        amount_base_units = _usdc_to_base_units(amount)
+                except (ValueError, InvalidOperation):
+                    # If not a valid number, try treating as normalized USDC
                     amount_base_units = _usdc_to_base_units(amount)
-            except (ValueError, InvalidOperation):
-                # If not a valid number, try treating as normalized USDC
-                amount_base_units = _usdc_to_base_units(amount)
 
         if hotkey is None:
             while True:
@@ -1490,15 +1433,11 @@ def prove_lock(
                     slot_input = typer.prompt("Slot UID", show_default=False)
                     slot = int(slot_input)
                     if slot < 0:
-                        console.print(
-                            "[bold red]Error:[/] Slot UID must be a non-negative integer"
-                        )
+                        console.print("[bold red]Error:[/] Slot UID must be a non-negative integer")
                         continue
                     break
                 except ValueError:
-                    console.print(
-                        "[bold red]Error:[/] Slot UID must be a valid integer"
-                    )
+                    console.print("[bold red]Error:[/] Slot UID must be a valid integer")
 
         if password is None:
             while True:
@@ -1524,7 +1463,7 @@ def prove_lock(
                 # Generate signature using the private key we already collected
                 console.print("\n[dim]Generating EIP-712 signature...[/]")
                 try:
-                    signature, derived_evm = _generate_eip712_signature(
+                    signature, derived_evm_str = _generate_eip712_signature(
                         chain_id=chain,
                         vault_address=vault,
                         miner_hotkey=hotkey,
@@ -1535,8 +1474,10 @@ def prove_lock(
                         timestamp=timestamp,
                         private_key=_private_key_for_signing,
                     )
+                    # Convert to ChecksumAddress for comparison
+                    derived_evm = Web3.to_checksum_address(derived_evm_str)
                     # Verify the address still matches (should always match since we confirmed it earlier)
-                    if miner_evm.lower() != derived_evm.lower():
+                    if miner_evm is not None and miner_evm.lower() != derived_evm.lower():
                         console.print(
                             f"[yellow]Warning:[/] EVM address mismatch detected. "
                             f"Expected {miner_evm}, got {derived_evm}"
@@ -1581,26 +1522,23 @@ def prove_lock(
                 typed_data = eip712_message.to_eip712()
 
                 # Convert HexBytes to strings for JSON serialization
-                def hexbytes_to_str(obj):
+                def hexbytes_to_str(obj: Any) -> str:
                     """Convert HexBytes to hex string for JSON serialization."""
                     from hexbytes import HexBytes
 
                     if isinstance(obj, HexBytes):
                         return obj.hex()
-                    raise TypeError(
-                        f"Object of type {type(obj)} is not JSON serializable"
-                    )
+                    raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
                 # Serialize to JSON with HexBytes conversion
                 json_str = json.dumps(typed_data, default=hexbytes_to_str, indent=2)
-                json_typed_data = json.loads(json_str)
 
                 # Create output directory if it doesn't exist
                 output_dir = Path.cwd() / "cartha_eip712_outputs"
                 output_dir.mkdir(exist_ok=True)
 
                 # Generate filename with timestamp
-                timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                timestamp_str = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
                 json_filename = output_dir / f"eip712_message_{timestamp_str}.json"
                 txt_filename = output_dir / f"eip712_instructions_{timestamp_str}.txt"
 
@@ -1614,7 +1552,7 @@ def prove_lock(
                 amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
 
                 instructions = f"""EIP-712 LockProof Signing Instructions
-Generated: {datetime.now(timezone.utc).isoformat()}
+Generated: {datetime.now(UTC).isoformat()}
 
 IMPORTANT: Copy the JSON from {json_filename.name} exactly as-is. Do not modify any values, spacing, or formatting.
 
@@ -1686,9 +1624,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
                 console.print(
                     "\n[dim]Tip:[/] The JSON file is formatted exactly as needed - copy it as-is without modifications."
                 )
-                console.print(
-                    "\n[bold cyan]Press Enter when you have your signature ready...[/]"
-                )
+                console.print("\n[bold cyan]Press Enter when you have your signature ready...[/]")
                 input()  # Wait for user to press Enter
 
                 while True:
@@ -1718,6 +1654,19 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
         if timestamp is None:
             timestamp = int(time.time())
 
+        # Ensure all required fields are set (mypy type narrowing)
+        # Note: amount_base_units is guaranteed to be set by the logic above
+        assert amount_base_units is not None, "Amount must be set"
+        assert chain is not None, "Chain ID must be set"
+        assert vault is not None, "Vault address must be set"
+        assert tx is not None, "Transaction hash must be set"
+        assert hotkey is not None, "Hotkey must be set"
+        assert slot is not None, "Slot UID must be set"
+        assert miner_evm is not None, "Miner EVM address must be set"
+        assert password is not None, "Pair password must be set"
+        assert signature is not None, "Signature must be set"
+        assert timestamp is not None, "Timestamp must be set"
+
         slot_id = str(slot)
         payload = _submit_lock_proof_payload(
             chain=chain,
@@ -1743,9 +1692,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             summary_table.add_row("Chain ID", str(chain))
             summary_table.add_row("Vault", vault)
             summary_table.add_row("Transaction", tx)
-            summary_table.add_row(
-                "Amount", f"{amount_str} USDC ({payload['amount']} base units)"
-            )
+            summary_table.add_row("Amount", f"{amount_str} USDC ({payload['amount']} base units)")
             summary_table.add_row("Hotkey", hotkey)
             summary_table.add_row("Slot UID", slot_id)
             summary_table.add_row("EVM Address", miner_evm)
@@ -1764,9 +1711,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             )
 
         # Use Rich Confirm for styled prompt
-        if not Confirm.ask(
-            "[bold yellow]Submit this lock proof to the verifier?[/]", default=True
-        ):
+        if not Confirm.ask("[bold yellow]Submit this lock proof to the verifier?[/]", default=True):
             if json_output:
                 # In JSON mode, output cancellation as JSON
                 console.print(json.dumps({"ok": False, "cancelled": True}))
@@ -1779,7 +1724,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             human_amount = Decimal(payload["amount"]) / Decimal(10**6)
             # Format amount nicely without scientific notation
             amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
-            console.print(f"\n[bold green]✓ Lock proof submitted successfully[/]")
+            console.print("\n[bold green]✓ Lock proof submitted successfully[/]")
             console.print(
                 f"[bold cyan]Amount submitted[/]: {amount_str} USDC "
                 f"({payload['amount']} base units)"
@@ -1795,24 +1740,18 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
 
 @app.command("claim-deposit")
 def claim_deposit(
-    chain: int | None = typer.Option(
-        None, "--chain", prompt="Chain ID", show_default=False
-    ),
+    chain: int | None = typer.Option(None, "--chain", prompt="Chain ID", show_default=False),
     vault: str | None = typer.Option(
         None, "--vault", prompt="Vault contract address", show_default=False
     ),
-    tx: str | None = typer.Option(
-        None, "--tx", prompt="Transaction hash", show_default=False
-    ),
+    tx: str | None = typer.Option(None, "--tx", prompt="Transaction hash", show_default=False),
     amount: int | None = typer.Option(
         None, "--amount", prompt="Lock amount (wei)", show_default=False
     ),
     hotkey: str | None = typer.Option(
         None, "--hotkey", prompt="Hotkey SS58 address", show_default=False
     ),
-    slot: int | None = typer.Option(
-        None, "--slot", prompt="Slot UID", show_default=False
-    ),
+    slot: int | None = typer.Option(None, "--slot", prompt="Slot UID", show_default=False),
     miner_evm: str | None = typer.Option(
         None, "--miner-evm", prompt="Miner EVM address", show_default=False
     ),
@@ -1828,16 +1767,18 @@ def claim_deposit(
         help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
         show_default=False,
     ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit the verifier response as JSON."
-    ),
+    json_output: bool = typer.Option(False, "--json", help="Emit the verifier response as JSON."),
 ) -> None:
     """Alias for prove-lock for deposit-first workflows."""
+    # Convert amount from int to str if provided
+    amount_str: str | None = None
+    if amount is not None:
+        amount_str = str(amount)
     prove_lock(
         chain=chain,
         vault=vault,
         tx=tx,
-        amount=amount,
+        amount=amount_str,
         hotkey=hotkey,
         slot=slot,
         miner_evm=miner_evm,
