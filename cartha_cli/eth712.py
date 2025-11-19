@@ -5,7 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict
 
-from eth_account.messages import encode_structured_data
+try:
+    # Use new API if available
+    from eth_account.messages import encode_typed_data
+except ImportError:
+    # Fallback for older versions of eth_account
+    from eth_account.messages import encode_structured_data as encode_typed_data
 from hexbytes import HexBytes
 
 
@@ -59,7 +64,7 @@ class LockProofMessage:
         return {"domain": domain, "types": types, "primaryType": "LockProof", "message": message}
 
     def encode(self) -> bytes:
-        return encode_structured_data(self.to_eip712())
+        return encode_typed_data(self.to_eip712())
 
 
 __all__ = ["LockProofMessage"]

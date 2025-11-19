@@ -60,19 +60,23 @@ cartha pair status \
   --wallet-name cold --wallet-hotkey hot \
   --hotkey bt1... --slot 123
 
-# Submit a previously signed LockProof payload
+# Submit a LockProof (signature can be generated locally or provided externally)
 cartha prove-lock \
   --chain 8453 \
   --vault 0xVAULT \
   --tx 0xLOCKTX \
-  --amount 250000000000 \
+  --amount 250 \
   --hotkey bt1... \
   --slot 123 \
-  --miner-evm 0xEVMADDR \
-  --pwd 0xPAIRPWD \
-  --signature 0xEIP712SIG
+  --pwd 0xPAIRPWD
 ```
 
-`cartha claim-deposit` is an alias of `prove-lock` for deposit-first workflows. The CLI no longer holds
-the EVM private key; miners sign the EIP‑712 payload externally (hardware wallet, ethers, etc.) and supply
-the resulting signature alongside the password.
+If you don't provide `--signature`, the CLI will prompt you to either:
+- Sign locally with your EVM private key (if `CARTHA_EVM_PK` is set)
+- Provide a signature from an external wallet (MetaMask, hardware wallet, etc.)
+
+See [docs/EIP712_SIGNING.md](docs/EIP712_SIGNING.md) for detailed signing instructions.
+
+`cartha claim-deposit` is an alias of `prove-lock` for deposit-first workflows.
+
+**Note**: For testnet/demo purposes, you can use `testnet/build_lock_proof.py` to generate mock signatures. See [testnet/README.md](testnet/README.md) for testnet-specific instructions.

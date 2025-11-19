@@ -280,4 +280,3 @@ Contributors are recognized in:
 - GitHub contributors list
 
 Thank you for contributing to Cartha CLI! 🎉
-

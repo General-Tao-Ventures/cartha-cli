@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
@@ -14,9 +15,15 @@ import typer
 from rich import box
 from rich.console import Console
 from rich.json import JSON
+from rich.prompt import Confirm
 from rich.rule import Rule
 from rich.table import Table
 from web3 import Web3
+
+try:
+    from eth_account import Account
+except ImportError:
+    Account = None  # type: ignore
 
 from .bt import (
     RegistrationResult,
@@ -26,6 +33,7 @@ from .bt import (
     register_hotkey,
 )
 from .config import settings
+from .eth712 import LockProofMessage
 from .verifier import (
     VerifierError,
     fetch_pair_password,
@@ -91,6 +99,14 @@ def _handle_unexpected_exception(context: str, exc: Exception) -> None:
     if detail:
         message += f" ({detail})"
     _exit_with_error(message)
+
+
+def _normalize_hex(value: str, prefix: str = "0x") -> str:
+    """Normalize hex string to ensure it has the correct prefix."""
+    value = value.strip()
+    if not value.startswith(prefix):
+        value = prefix + value
+    return value
 
 
 def _usdc_to_base_units(value: str) -> int:
@@ -785,7 +801,7 @@ def pair_status(
         console.print(
             "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
         )
-    
+
     # Explicitly return to ensure clean exit
     return
 
@@ -837,6 +853,82 @@ def _submit_lock_proof_payload(
         "timestamp": timestamp,
         "signature": signature,
     }
+
+
+def _generate_eip712_signature(
+    *,
+    chain_id: int,
+    vault_address: str,
+    miner_hotkey: str,
+    slot_uid: str,
+    tx_hash: str,
+    amount: int,
+    password: str,
+    timestamp: int,
+    private_key: str,
+) -> tuple[str, str]:
+    """Generate EIP-712 signature for LockProof.
+
+    Args:
+        chain_id: EVM chain ID
+        vault_address: Vault contract address
+        miner_hotkey: Bittensor hotkey (SS58)
+        slot_uid: Slot UID
+        tx_hash: Transaction hash
+        amount: Amount in base units
+        password: Pair password (0x-prefixed hex)
+        timestamp: Unix timestamp
+        private_key: EVM private key (0x-prefixed hex)
+
+    Returns:
+        Tuple of (signature, miner_evm_address)
+    """
+    if Account is None:
+        _exit_with_error(
+            "eth-account is required for EIP-712 signing. Install it with: uv sync"
+        )
+
+    # Normalize private key
+    private_key_normalized = _normalize_hex(private_key)
+
+    # Derive EVM address from private key
+    account = Account.from_key(private_key_normalized)
+    miner_evm_address = Web3.to_checksum_address(account.address)
+
+    # Normalize password
+    password_normalized = _normalize_hex(password)
+    if len(password_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
+        _exit_with_error("Password must be 32 bytes (0x + 64 hex characters)")
+
+    # Normalize tx hash
+    tx_hash_normalized = _normalize_hex(tx_hash.lower())
+    if len(tx_hash_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
+        _exit_with_error("Transaction hash must be 32 bytes (0x + 64 hex characters)")
+
+    # Build EIP-712 message
+    message = LockProofMessage(
+        chain_id=chain_id,
+        vault_address=vault_address,
+        miner_evm_address=miner_evm_address,
+        miner_hotkey=miner_hotkey,
+        slot_uid=slot_uid,
+        tx_hash=tx_hash_normalized,
+        amount=amount,
+        password=password_normalized,
+        timestamp=timestamp,
+    )
+
+    # Sign the message
+    signable = message.encode()
+    signed = Account.sign_message(signable, private_key=private_key_normalized)
+
+    # Normalize signature: ensure single 0x prefix
+    sig_hex = signed.signature.hex()
+    if sig_hex.startswith("0x"):
+        sig_hex = sig_hex[2:]
+    signature_normalized = "0x" + sig_hex
+
+    return signature_normalized, miner_evm_address
 
 
 def _send_lock_proof(payload: dict[str, Any], json_output: bool) -> None:
@@ -951,33 +1043,47 @@ def prove_lock(
         # If payload file is provided, load all values from it
         if payload_file is not None:
             if not payload_file.exists():
-                console.print(f"[bold red]Error:[/] Payload file not found: {payload_file}")
+                console.print(
+                    f"[bold red]Error:[/] Payload file not found: {payload_file}"
+                )
                 raise typer.Exit(code=1)
-            
+
             try:
                 payload_data = json.loads(payload_file.read_text())
             except json.JSONDecodeError as exc:
-                console.print(f"[bold red]Error:[/] Invalid JSON in payload file: {exc}")
+                console.print(
+                    f"[bold red]Error:[/] Invalid JSON in payload file: {exc}"
+                )
                 raise typer.Exit(code=1)
-            
+
             # Extract values from payload file, using command-line args as overrides
             chain = chain if chain is not None else payload_data.get("chain")
             vault = vault if vault is not None else payload_data.get("vault")
             tx = tx if tx is not None else payload_data.get("tx")
             # Use amountNormalized if available, otherwise amount (which is in base units)
             if amount is None:
-                amount = payload_data.get("amountNormalized") or str(payload_data.get("amount", ""))
+                amount = payload_data.get("amountNormalized") or str(
+                    payload_data.get("amount", "")
+                )
             hotkey = hotkey if hotkey is not None else payload_data.get("hotkey")
             # Slot is stored as string in JSON, convert to int if loading from file
             if slot is None:
                 slot_raw = payload_data.get("slot")
                 if slot_raw is not None:
                     slot = int(slot_raw) if isinstance(slot_raw, str) else slot_raw
-            miner_evm = miner_evm if miner_evm is not None else payload_data.get("miner_evm")
-            password = password if password is not None else payload_data.get("password")
-            signature = signature if signature is not None else payload_data.get("signature")
-            timestamp = timestamp if timestamp is not None else payload_data.get("timestamp")
-            
+            miner_evm = (
+                miner_evm if miner_evm is not None else payload_data.get("miner_evm")
+            )
+            password = (
+                password if password is not None else payload_data.get("password")
+            )
+            signature = (
+                signature if signature is not None else payload_data.get("signature")
+            )
+            timestamp = (
+                timestamp if timestamp is not None else payload_data.get("timestamp")
+            )
+
             # Validate that all required fields are present
             missing_fields = []
             if chain is None:
@@ -1000,16 +1106,16 @@ def prove_lock(
                 missing_fields.append("signature")
             if timestamp is None:
                 missing_fields.append("timestamp")
-            
+
             if missing_fields:
                 console.print(
                     f"[bold red]Error:[/] Payload file is missing required fields: {', '.join(missing_fields)}\n"
                     f"Make sure the payload file was generated by build_lock_proof.py"
                 )
                 raise typer.Exit(code=1)
-            
+
             console.print(f"[dim]Loaded payload from:[/] {payload_file}")
-        
+
         # Only prompt if payload_file was not provided or if values are still missing
         if chain is None:
             chain = int(typer.prompt("Chain ID", show_default=False))
@@ -1039,12 +1145,114 @@ def prove_lock(
             hotkey = typer.prompt("Hotkey SS58 address", show_default=False)
         if slot is None:
             slot = int(typer.prompt("Slot UID", show_default=False))
+        if password is None:
+            password = typer.prompt(
+                "Pair password (0x...)", hide_input=False, show_default=False
+            )
+
+        # Handle signature: if missing, prompt for signing method
+        if signature is None:
+            has_signature = typer.confirm(
+                "Do you already have an EIP-712 signature? (y/n)", default=False
+            )
+
+            if has_signature:
+                # User has signature from external wallet
+                signature = typer.prompt(
+                    "Paste your EIP-712 signature (0x...)", show_default=False
+                )
+                if miner_evm is None:
+                    miner_evm = typer.prompt("Miner EVM address", show_default=False)
+            else:
+                # Generate signature locally
+                sign_locally = typer.confirm(
+                    "Sign locally with private key? (y/n)", default=True
+                )
+
+                if sign_locally:
+                    # Get private key from env or prompt
+                    private_key = os.getenv("CARTHA_EVM_PK")
+                    if not private_key:
+                        console.print(
+                            "[dim]Tip:[/] Set CARTHA_EVM_PK environment variable to avoid prompting"
+                        )
+                        private_key = typer.prompt(
+                            "EVM private key (0x...)",
+                            hide_input=True,
+                            show_default=False,
+                        )
+
+                    # Generate timestamp if not provided
+                    if timestamp is None:
+                        timestamp = int(time.time())
+
+                    # Generate signature
+                    console.print("[dim]Generating EIP-712 signature...[/]")
+                    try:
+                        signature, derived_evm = _generate_eip712_signature(
+                            chain_id=chain,
+                            vault_address=vault,
+                            miner_hotkey=hotkey,
+                            slot_uid=str(slot),
+                            tx_hash=tx,
+                            amount=amount_base_units,
+                            password=password,
+                            timestamp=timestamp,
+                            private_key=private_key,
+                        )
+                        # Use derived EVM address if not provided
+                        if miner_evm is None:
+                            miner_evm = derived_evm
+                            console.print(f"[dim]Derived EVM address:[/] {miner_evm}")
+                        elif miner_evm.lower() != derived_evm.lower():
+                            console.print(
+                                f"[yellow]Warning:[/] Provided EVM address ({miner_evm}) "
+                                f"does not match private key address ({derived_evm})"
+                            )
+                            if not typer.confirm("Continue anyway?", default=False):
+                                raise typer.Exit(code=1)
+                        console.print("[bold green]✓ Signature generated[/]")
+                    except Exception as exc:
+                        _handle_unexpected_exception(
+                            "Failed to generate signature", exc
+                        )
+                else:
+                    # External signing (MetaMask, etc.)
+                    console.print(
+                        "\n[bold cyan]Sign the EIP-712 message externally:[/]"
+                    )
+                    console.print(
+                        "[dim]Use MetaMask, ethers.js, or another wallet that supports EIP-712 signing.[/]"
+                    )
+                    console.print("\n[bold]Message structure:[/]")
+                    console.print(f"  Chain ID: {chain}")
+                    console.print(f"  Vault: {vault}")
+                    console.print(f"  Hotkey: {hotkey}")
+                    console.print(f"  Slot UID: {slot}")
+                    console.print(f"  Transaction: {tx}")
+                    console.print(f"  Amount: {amount_base_units} (base units)")
+                    console.print(f"  Password: {password}")
+                    if timestamp is None:
+                        timestamp = int(time.time())
+                    console.print(f"  Timestamp: {timestamp}")
+                    console.print(
+                        "\n[dim]See docs/EIP712_SIGNING.md for detailed signing instructions.[/]"
+                    )
+                    signature = typer.prompt(
+                        "Paste your EIP-712 signature (0x...)", show_default=False
+                    )
+                    if miner_evm is None:
+                        miner_evm = typer.prompt(
+                            "Miner EVM address", show_default=False
+                        )
+
+        # Ensure miner_evm is set if signature was provided but miner_evm wasn't
         if miner_evm is None:
             miner_evm = typer.prompt("Miner EVM address", show_default=False)
-        if password is None:
-            password = typer.prompt("Pair password (0x...)", hide_input=False, show_default=False)
-        if signature is None:
-            signature = typer.prompt("EIP-712 signature (0x...)", show_default=False)
+
+        # Ensure timestamp is set (required for signature verification)
+        if timestamp is None:
+            timestamp = int(time.time())
 
         slot_id = str(slot)
         payload = _submit_lock_proof_payload(
@@ -1059,11 +1267,55 @@ def prove_lock(
             signature=signature,
             timestamp=timestamp,
         )
+
+        # Show summary and confirm before submission
+        if not json_output:
+            human_amount = Decimal(payload["amount"]) / Decimal(10**6)
+            amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
+            console.print("\n[bold cyan]Lock Proof Summary:[/]")
+            summary_table = Table(show_header=False, box=box.SIMPLE)
+            summary_table.add_column(style="cyan")
+            summary_table.add_column(style="yellow")
+            summary_table.add_row("Chain ID", str(chain))
+            summary_table.add_row("Vault", vault)
+            summary_table.add_row("Transaction", tx)
+            summary_table.add_row(
+                "Amount", f"{amount_str} USDC ({payload['amount']} base units)"
+            )
+            summary_table.add_row("Hotkey", hotkey)
+            summary_table.add_row("Slot UID", slot_id)
+            summary_table.add_row("EVM Address", miner_evm)
+            summary_table.add_row(
+                "Signature",
+                payload["signature"][:20] + "..." + payload["signature"][-10:],
+            )
+            console.print(summary_table)
+            console.print()
+        else:
+            # In JSON mode, show a simple summary before confirmation
+            console.print(
+                f"[dim]Preparing to submit lock proof: "
+                f"chain={chain}, vault={vault}, amount={payload['amount']}, "
+                f"hotkey={hotkey}, slot={slot_id}[/]"
+            )
+
+        # Use Rich Confirm for styled prompt
+        if not Confirm.ask(
+            "[bold yellow]Submit this lock proof to the verifier?[/]", default=True
+        ):
+            if json_output:
+                # In JSON mode, output cancellation as JSON
+                console.print(json.dumps({"ok": False, "cancelled": True}))
+            else:
+                console.print("[bold yellow]Submission cancelled.[/]")
+            raise typer.Exit(code=0)
+
         _send_lock_proof(payload, json_output)
         if not json_output:
             human_amount = Decimal(payload["amount"]) / Decimal(10**6)
             # Format amount nicely without scientific notation
             amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
+            console.print(f"\n[bold green]✓ Lock proof submitted successfully[/]")
             console.print(
                 f"[bold cyan]Amount submitted[/]: {amount_str} USDC "
                 f"({payload['amount']} base units)"
