@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from typing import Optional
 
 try:
     import bittensor as bt
@@ -28,11 +27,11 @@ def get_wallet(name: str, hotkey: str) -> bt.wallet:
 class RegistrationResult:
     status: str
     success: bool
-    uid: Optional[int]
+    uid: int | None
     hotkey: str
-    extrinsic: Optional[str] = None  # Extrinsic hash (e.g., "5759123-5")
-    balance_before: Optional[float] = None  # Balance before registration
-    balance_after: Optional[float] = None  # Balance after registration
+    extrinsic: str | None = None  # Extrinsic hash (e.g., "5759123-5")
+    balance_before: float | None = None  # Balance before registration
+    balance_after: float | None = None  # Balance after registration
 
 
 def register_hotkey(
@@ -148,7 +147,7 @@ def register_hotkey(
     )
 
 
-def get_burn_cost(network: str, netuid: int) -> Optional[float]:
+def get_burn_cost(network: str, netuid: int) -> float | None:
     """Get the burn cost (registration cost) for a subnet.
 
     Args:
@@ -160,8 +159,8 @@ def get_burn_cost(network: str, netuid: int) -> Optional[float]:
     """
     # Try async SubtensorInterface method (most reliable)
     try:
-        from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
         from bittensor_cli.src.bittensor.balances import Balance
+        from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
 
         async def _fetch_burn_cost():
             async with SubtensorInterface(network=network) as subtensor_async:
@@ -200,7 +199,7 @@ def get_burn_cost(network: str, netuid: int) -> Optional[float]:
     except Exception as exc:
         # Log other exceptions but don't show warnings in normal operation
         import warnings
-        warnings.warn(f"Failed to fetch burn cost: {exc}", UserWarning)
+        warnings.warn(f"Failed to fetch burn cost: {exc}", UserWarning, stacklevel=2)
 
     return None
 

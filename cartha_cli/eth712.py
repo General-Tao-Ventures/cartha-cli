@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Any
 
 try:
     # Try to import new API first
@@ -128,7 +128,7 @@ class LockProofMessage:
     password: str
     timestamp: int
 
-    def to_eip712(self) -> Dict[str, Any]:
+    def to_eip712(self) -> dict[str, Any]:
         domain = {
             "name": "CarthaLockProof",
             "version": "1",

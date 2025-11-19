@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 import requests
 
@@ -26,10 +26,10 @@ def _request(
     method: str,
     path: str,
     *,
-    params: Dict[str, Any] | None = None,
-    json_data: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-    headers: Dict[str, str] = {"Accept": "application/json"}
+    params: dict[str, Any] | None = None,
+    json_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    headers: dict[str, str] = {"Accept": "application/json"}
     url = _build_url(path)
 
     try:
@@ -71,7 +71,7 @@ def fetch_pair_status(
     netuid: int,
     message: str,
     signature: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Return the status for a (hotkey, slotUID) pair after verifying ownership."""
     payload = {
         "hotkey": hotkey,
@@ -96,7 +96,7 @@ def fetch_pair_password(
     netuid: int,
     message: str,
     signature: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Fetch the pair password via the secured endpoint."""
     payload = {
         "hotkey": hotkey,
@@ -121,7 +121,7 @@ def register_pair_password(
     netuid: int,
     message: str,
     signature: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     payload = {
         "hotkey": hotkey,
         "slot": slot,
@@ -137,7 +137,7 @@ def register_pair_password(
     )
 
 
-def submit_lock_proof(payload: Dict[str, Any]) -> Dict[str, Any]:
+def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
     """Submit a lock proof to the verifier."""
     return _request(
         "POST",

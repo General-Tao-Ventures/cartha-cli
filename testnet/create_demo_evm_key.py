@@ -22,7 +22,7 @@ console = Console()
 
 @app.command()
 def main(
-    output: Path | None = typer.Option(
+    output: Path | None = typer.Option(  # noqa: B008
         None,
         "--output",
         help="Optional path to write a JSON blob containing CARTHA_EVM_PK and address.",

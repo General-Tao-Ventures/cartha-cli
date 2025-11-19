@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
-from decimal import Decimal, InvalidOperation, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from pathlib import Path
 
 import typer
@@ -84,12 +84,12 @@ def main(
     tx: str = typer.Option(
         DEFAULT_TX,
         "--tx",
-        help=f"Transaction hash (default: mock hash for demo).",
+        help="Transaction hash (default: mock hash for demo).",
     ),
     amount: str = typer.Option(
         None,
         "--amount",
-        help=f"Deposit amount in USDC. If not provided, you'll be prompted.",
+        help="Deposit amount in USDC. If not provided, you'll be prompted.",
     ),
     hotkey: str = typer.Option(
         None, "--hotkey", help="Miner hotkey (SS58). Required if not in env."
@@ -100,7 +100,7 @@ def main(
     pwd: str = typer.Option(
         None, "--pwd", help="Pair password (0x...). Required if not in env."
     ),
-    output: Path = typer.Option(
+      output: Path = typer.Option(  # noqa: B008
         OUTPUT_PATH, "--output", help="Where to store the generated payload JSON."
     ),
 ) -> None:
@@ -133,7 +133,7 @@ def main(
     if amount is None:
         random_default = get_random_amount()
         amount = Prompt.ask(
-            f"Deposit amount in USDC",
+            "Deposit amount in USDC",
             default=random_default,
         )
     

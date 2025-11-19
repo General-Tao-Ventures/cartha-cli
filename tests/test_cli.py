@@ -74,10 +74,9 @@ sys.modules.setdefault("web3", types.SimpleNamespace(Web3=_StubWeb3))
 if not _eth_account_available:
     sys.modules.setdefault("eth_account", types.SimpleNamespace(Account=Account))
 
-from cartha_cli.bt import RegistrationResult
-from cartha_cli.main import app
-from cartha_cli import main as cli_main
-
+from cartha_cli import main as cli_main  # noqa: E402
+from cartha_cli.bt import RegistrationResult  # noqa: E402
+from cartha_cli.main import app  # noqa: E402
 
 runner = CliRunner()
 
@@ -432,7 +431,6 @@ def test_prove_lock_command_success(monkeypatch):
 
 def test_prove_lock_with_local_signature_generation(monkeypatch):
     """Test prove-lock with local signature generation when signature is missing."""
-    import os
     try:
         from eth_account import Account
     except ImportError:
@@ -568,7 +566,6 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
 
 def test_prove_lock_local_signature_without_env_var(monkeypatch):
     """Test prove-lock local signing when CARTHA_EVM_PK is not set."""
-    import os
     try:
         from eth_account import Account
     except ImportError:
@@ -642,7 +639,6 @@ def test_prove_lock_local_signature_without_env_var(monkeypatch):
 
 def test_prove_lock_signature_evm_address_mismatch(monkeypatch):
     """Test prove-lock when provided EVM address doesn't match private key."""
-    import os
     try:
         from eth_account import Account
     except ImportError:
@@ -653,7 +649,6 @@ def test_prove_lock_signature_evm_address_mismatch(monkeypatch):
     # Generate a test private key
     test_account = Account.create()
     test_private_key = test_account.key.hex()
-    test_address = test_account.address
 
     def fake_submit(payload):
         captured["payload"] = payload
@@ -764,6 +759,7 @@ def test_prove_lock_external_signing_flow(monkeypatch):
 def test_generate_eip712_signature_helper(monkeypatch):
     """Test the _generate_eip712_signature helper function directly."""
     from eth_account import Account
+
     from cartha_cli.main import _generate_eip712_signature
     
     # Generate test account
@@ -791,8 +787,8 @@ def test_generate_eip712_signature_helper(monkeypatch):
 
 def test_prove_lock_payload_file_with_signature(monkeypatch):
     """Test prove-lock with payload file that includes signature (backward compatibility)."""
-    import tempfile
     import json
+    import tempfile
     
     captured = {}
 
