@@ -233,6 +233,7 @@ def main(
         f"  --slot {slot} \\\n"
         f"  --miner-evm {miner_evm} \\\n"
         f"  --pwd {password} \\\n"
+        f"  --timestamp {timestamp} \\\n"
         f"  --signature {payload['signature']}[/]"
     )
     console.print(

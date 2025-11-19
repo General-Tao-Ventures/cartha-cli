@@ -800,6 +800,7 @@ def _submit_lock_proof_payload(
     miner_evm: str,
     password: str,
     signature: str,
+    timestamp: int | None = None,
 ) -> dict[str, Any]:
     if amount <= 0:
         console.print("[bold red]Amount must be a positive integer.[/]")
@@ -819,8 +820,9 @@ def _submit_lock_proof_payload(
     if not signature.startswith("0x"):
         signature = "0x" + signature
 
-    # Get current timestamp
-    timestamp = int(time.time())
+    # Use provided timestamp if available (from build_lock_proof.py), otherwise generate new one
+    if timestamp is None:
+        timestamp = int(time.time())
 
     return {
         "vaultAddress": Web3.to_checksum_address(vault),
@@ -935,6 +937,12 @@ def prove_lock(
         prompt="EIP-712 signature (0x...)",
         show_default=False,
     ),
+    timestamp: int | None = typer.Option(
+        None,
+        "--timestamp",
+        help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
+        show_default=False,
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit the verifier response as JSON."
     ),
@@ -987,6 +995,7 @@ def prove_lock(
             miner_evm=miner_evm,
             password=password,
             signature=signature,
+            timestamp=timestamp,
         )
         _send_lock_proof(payload, json_output)
         if not json_output:
@@ -1035,6 +1044,12 @@ def claim_deposit(
     signature: str | None = typer.Option(
         None, "--signature", prompt="EIP-712 signature (0x...)", show_default=False
     ),
+    timestamp: int | None = typer.Option(
+        None,
+        "--timestamp",
+        help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
+        show_default=False,
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit the verifier response as JSON."
     ),
@@ -1050,6 +1065,7 @@ def claim_deposit(
         miner_evm=miner_evm,
         password=password,
         signature=signature,
+        timestamp=timestamp,
         json_output=json_output,
     )
 
