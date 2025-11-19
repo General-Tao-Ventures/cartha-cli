@@ -31,6 +31,43 @@ if not _has_new_api and not _has_old_api:
 from hexbytes import HexBytes
 
 
+def _convert_hexbytes_to_bytes(typed_data: dict) -> dict:
+    """Convert HexBytes to bytes in message."""
+    if "message" in typed_data:
+        message = dict(typed_data["message"])
+        for key, value in message.items():
+            if isinstance(value, HexBytes):
+                message[key] = bytes(value)
+        typed_data["message"] = message
+    return typed_data
+
+
+def _convert_hexbytes_to_hex_no_prefix(typed_data: dict) -> dict:
+    """Convert HexBytes to hex strings without 0x prefix."""
+    if "message" in typed_data:
+        message = dict(typed_data["message"])
+        for key, value in message.items():
+            if isinstance(value, HexBytes):
+                hex_str = value.hex()
+                # Remove 0x prefix if present
+                if hex_str.startswith("0x"):
+                    hex_str = hex_str[2:]
+                message[key] = hex_str
+        typed_data["message"] = message
+    return typed_data
+
+
+def _convert_hexbytes_to_hex_string(typed_data: dict) -> dict:
+    """Convert HexBytes to hex strings with 0x prefix."""
+    if "message" in typed_data:
+        message = dict(typed_data["message"])
+        for key, value in message.items():
+            if isinstance(value, HexBytes):
+                message[key] = value.hex()
+        typed_data["message"] = message
+    return typed_data
+
+
 def _encode_typed_data_compat(typed_data: dict) -> bytes:
     """Wrapper to handle API differences between encode_typed_data and encode_structured_data.
 
@@ -77,43 +114,6 @@ def _encode_typed_data_compat(typed_data: dict) -> bytes:
     raise RuntimeError(
         f"EIP-712 encoding failed with all APIs and formats:\n{error_summary}"
     )
-
-
-def _convert_hexbytes_to_bytes(typed_data: dict) -> dict:
-    """Convert HexBytes to bytes in message."""
-    if "message" in typed_data:
-        message = dict(typed_data["message"])
-        for key, value in message.items():
-            if isinstance(value, HexBytes):
-                message[key] = bytes(value)
-        typed_data["message"] = message
-    return typed_data
-
-
-def _convert_hexbytes_to_hex_no_prefix(typed_data: dict) -> dict:
-    """Convert HexBytes to hex strings without 0x prefix."""
-    if "message" in typed_data:
-        message = dict(typed_data["message"])
-        for key, value in message.items():
-            if isinstance(value, HexBytes):
-                hex_str = value.hex()
-                # Remove 0x prefix if present
-                if hex_str.startswith("0x"):
-                    hex_str = hex_str[2:]
-                message[key] = hex_str
-        typed_data["message"] = message
-    return typed_data
-
-
-def _convert_hexbytes_to_hex_string(typed_data: dict) -> dict:
-    """Convert HexBytes to hex strings with 0x prefix."""
-    if "message" in typed_data:
-        message = dict(typed_data["message"])
-        for key, value in message.items():
-            if isinstance(value, HexBytes):
-                message[key] = value.hex()
-        typed_data["message"] = message
-    return typed_data
 
 
 @dataclass

@@ -1107,6 +1107,7 @@ def prove_lock(
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
     try:
+        amount_base_units: int | None = None  # Initialize amount_base_units
         # If payload file is provided, load all values from it
         if payload_file is not None:
             if not payload_file.exists():
@@ -1160,6 +1161,18 @@ def prove_lock(
                 amount = payload_data.get("amountNormalized") or str(
                     payload_data.get("amount", "")
                 )
+            # Convert amount to base units if it's a normalized string
+            if amount is not None and amount != "":
+                try:
+                    amount_as_int = int(float(amount))
+                    if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
+                        amount_base_units = amount_as_int
+                    else:
+                        # Treat as normalized USDC
+                        amount_base_units = _usdc_to_base_units(amount)
+                except (ValueError, InvalidOperation):
+                    # If not a valid number, try treating as normalized USDC
+                    amount_base_units = _usdc_to_base_units(amount)
             hotkey = hotkey if hotkey is not None else payload_data.get("hotkey")
             if hotkey is not None:
                 if (
@@ -1256,6 +1269,44 @@ def prove_lock(
                 raise typer.Exit(code=1)
 
             console.print(f"[dim]Loaded payload from:[/] {payload_file}")
+
+        # Normalize hex fields if provided via CLI args (not from payload file)
+        if payload_file is None:
+            if signature is not None:
+                signature = _normalize_hex(signature)
+                if len(signature) != 132:  # 0x + 130 hex chars = 65 bytes
+                    console.print(
+                        "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+            if password is not None:
+                password = _normalize_hex(password)
+                if len(password) != 66:  # 0x + 64 hex chars = 32 bytes
+                    console.print(
+                        "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+            if tx is not None:
+                tx = _normalize_hex(tx)
+                if len(tx) != 66:  # 0x + 64 hex chars = 32 bytes
+                    console.print(
+                        "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+            if miner_evm is not None:
+                if not Web3.is_address(miner_evm):
+                    console.print(
+                        "[bold red]Error:[/] Miner EVM address must be a valid EVM address"
+                    )
+                    raise typer.Exit(code=1)
+                miner_evm = Web3.to_checksum_address(miner_evm)
+            if vault is not None:
+                if not Web3.is_address(vault):
+                    console.print(
+                        "[bold red]Error:[/] Vault address must be a valid EVM address"
+                    )
+                    raise typer.Exit(code=1)
+                vault = Web3.to_checksum_address(vault)
 
         # Ask about signature FIRST, before prompting for other fields
         # This makes the flow more logical: if user has signature, collect it and required fields
@@ -1461,18 +1512,20 @@ def prove_lock(
                 except Exception as exc:
                     console.print(f"[bold red]Error:[/] Invalid amount: {exc}")
         else:
-            # Auto-detect: if amount as int would be >= 1e9, assume base units
-            # Otherwise, treat as normalized USDC
-            try:
-                amount_as_int = int(float(amount))
-                if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
-                    amount_base_units = amount_as_int
-                else:
-                    # Treat as normalized USDC
+            # Only convert if amount_base_units is not already set (e.g., from payload file)
+            if amount_base_units is None:
+                # Auto-detect: if amount as int would be >= 1e9, assume base units
+                # Otherwise, treat as normalized USDC
+                try:
+                    amount_as_int = int(float(amount))
+                    if amount_as_int >= 1_000_000_000:  # >= 1e9, likely base units
+                        amount_base_units = amount_as_int
+                    else:
+                        # Treat as normalized USDC
+                        amount_base_units = _usdc_to_base_units(amount)
+                except (ValueError, InvalidOperation):
+                    # If not a valid number, try treating as normalized USDC
                     amount_base_units = _usdc_to_base_units(amount)
-            except (ValueError, InvalidOperation):
-                # If not a valid number, try treating as normalized USDC
-                amount_base_units = _usdc_to_base_units(amount)
 
         if hotkey is None:
             while True:
@@ -1717,6 +1770,11 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
         # Ensure timestamp is set (required for signature verification)
         if timestamp is None:
             timestamp = int(time.time())
+
+        # Ensure amount_base_units is set
+        if amount_base_units is None:
+            console.print("[bold red]Error:[/] Amount must be provided and valid")
+            raise typer.Exit(code=1)
 
         slot_id = str(slot)
         payload = _submit_lock_proof_payload(

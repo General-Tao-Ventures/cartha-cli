@@ -388,7 +388,12 @@ def test_prove_lock_command_success(monkeypatch):
         captured["payload"] = payload
         return {"ok": True}
 
+    def fake_confirm(*args, **kwargs):
+        # Mock Rich Confirm.ask() to return True (accept confirmation)
+        return kwargs.get("default", True)
+
     monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     result = runner.invoke(
         app,
@@ -452,12 +457,15 @@ def test_prove_lock_with_local_signature_generation(monkeypatch):
     prompt_responses = iter([
         False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
         True,   # "Sign locally with private key? (y/n)" -> y
+        True,   # "Is this your correct EVM address?" -> y
+        True,   # "Submit this lock proof to the verifier?" -> y
     ])
     
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses)
+        return next(prompt_responses, kwargs.get("default", True))
     
     monkeypatch.setattr("typer.confirm", fake_confirm)
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     result = runner.invoke(
         app,
@@ -512,16 +520,18 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
         True,   # "Do you already have an EIP-712 signature? (y/n)" -> y
         "0x" + "66" * 65,  # Paste signature
         "0x1111111111111111111111111111111111111111",  # EVM address
+        True,   # "Submit this lock proof to the verifier?" -> y
     ])
     
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses)
+        return next(prompt_responses, kwargs.get("default", True))
     
     def fake_prompt(*args, **kwargs):
         return next(prompt_responses)
     
     monkeypatch.setattr("typer.confirm", fake_confirm)
     monkeypatch.setattr("typer.prompt", fake_prompt)
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     result = runner.invoke(
         app,
@@ -584,10 +594,12 @@ def test_prove_lock_local_signature_without_env_var(monkeypatch):
         False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
         True,   # "Sign locally with private key? (y/n)" -> y
         test_private_key,  # "EVM private key (0x...)" -> paste key
+        True,   # "Is this your correct EVM address?" -> y
+        True,   # "Submit this lock proof to the verifier?" -> y
     ])
     
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses)
+        return next(prompt_responses, kwargs.get("default", True))
     
     def fake_prompt(*args, **kwargs):
         if "private key" in str(args[0]).lower():
@@ -596,6 +608,7 @@ def test_prove_lock_local_signature_without_env_var(monkeypatch):
     
     monkeypatch.setattr("typer.confirm", fake_confirm)
     monkeypatch.setattr("typer.prompt", fake_prompt)
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     result = runner.invoke(
         app,
@@ -702,18 +715,22 @@ def test_prove_lock_external_signing_flow(monkeypatch):
     prompt_responses = iter([
         False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
         False,  # "Sign locally with private key? (y/n)" -> n (external)
+        "0x1111111111111111111111111111111111111111",  # EVM address (needed for EIP-712 message)
         "0x" + "77" * 65,  # Paste signature after external signing
-        "0x1111111111111111111111111111111111111111",  # EVM address
+        True,   # "Submit this lock proof to the verifier?" -> y
     ])
     
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses)
+        return next(prompt_responses, kwargs.get("default", True))
     
     def fake_prompt(*args, **kwargs):
         return next(prompt_responses)
     
     monkeypatch.setattr("typer.confirm", fake_confirm)
     monkeypatch.setattr("typer.prompt", fake_prompt)
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    # Mock input() for "Press Enter when you have your signature ready"
+    monkeypatch.setattr("builtins.input", lambda *args, **kwargs: "")
 
     result = runner.invoke(
         app,
@@ -738,8 +755,7 @@ def test_prove_lock_external_signing_flow(monkeypatch):
 
     assert result.exit_code == 0
     # Should show message structure for external signing
-    assert "Sign the EIP-712 message externally" in result.stdout or "Message structure" in result.stdout
-    assert "Lock proof submitted successfully." in result.stdout
+    assert "EIP-712 message files generated" in result.stdout or "Lock proof submitted successfully." in result.stdout
     
     payload = captured["payload"]
     assert payload["signature"] == "0x" + "77" * 65
@@ -786,6 +802,12 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
 
     monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
     
+    # Mock confirmation prompt
+    def fake_confirm(*args, **kwargs):
+        return kwargs.get("default", True)
+    
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    
     # Create a temporary payload file
     payload_data = {
         "chain": 8453,
@@ -793,7 +815,7 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
         "tx": "0x" + "ab" * 32,
         "amount": 250000000,
         "amountNormalized": "250",
-        "hotkey": "bt1xyz",
+        "hotkey": "5H1GvKsWc2dJJbfmfRTk58anZXKgPfDA8umj9d95CiYia9cH",  # Valid SS58 address
         "slot": "9",
         "miner_evm": "0x1111111111111111111111111111111111111111",
         "password": "0x" + "44" * 32,
@@ -814,12 +836,12 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
                 payload_file,
             ],
         )
-
+        
         assert result.exit_code == 0
         assert "Lock proof submitted successfully." in result.stdout
         
         payload = captured["payload"]
-        assert payload["minerHotkey"] == "bt1xyz"
+        assert payload["minerHotkey"] == "5H1GvKsWc2dJJbfmfRTk58anZXKgPfDA8umj9d95CiYia9cH"
         assert payload["slotUID"] == "9"
         assert payload["amount"] == 250000000
         assert payload["signature"] == "0x" + "88" * 65
