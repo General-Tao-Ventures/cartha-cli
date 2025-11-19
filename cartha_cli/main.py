@@ -1060,26 +1060,100 @@ def prove_lock(
             chain = chain if chain is not None else payload_data.get("chain")
             vault = vault if vault is not None else payload_data.get("vault")
             tx = tx if tx is not None else payload_data.get("tx")
+
+            # Validate extracted values
+            if chain is not None:
+                try:
+                    chain = int(chain)
+                    if chain <= 0:
+                        console.print(
+                            "[bold red]Error:[/] Chain ID must be a positive integer"
+                        )
+                        raise typer.Exit(code=1)
+                except (ValueError, TypeError):
+                    console.print(
+                        "[bold red]Error:[/] Chain ID must be a valid integer"
+                    )
+                    raise typer.Exit(code=1)
+            if vault is not None and not Web3.is_address(vault):
+                console.print(
+                    "[bold red]Error:[/] Vault address must be a valid EVM address"
+                )
+                raise typer.Exit(code=1)
+            if tx is not None:
+                tx_normalized = _normalize_hex(tx)
+                if len(tx_normalized) != 66:
+                    console.print(
+                        "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+                tx = tx_normalized
             # Use amountNormalized if available, otherwise amount (which is in base units)
             if amount is None:
                 amount = payload_data.get("amountNormalized") or str(
                     payload_data.get("amount", "")
                 )
             hotkey = hotkey if hotkey is not None else payload_data.get("hotkey")
+            if hotkey is not None:
+                if (
+                    not (hotkey.startswith("bt1") or hotkey.startswith("5"))
+                    or len(hotkey) < 10
+                ):
+                    console.print(
+                        "[bold red]Error:[/] Hotkey must be a valid SS58 address (starts with 'bt1' or '5')"
+                    )
+                    raise typer.Exit(code=1)
+
             # Slot is stored as string in JSON, convert to int if loading from file
             if slot is None:
                 slot_raw = payload_data.get("slot")
                 if slot_raw is not None:
-                    slot = int(slot_raw) if isinstance(slot_raw, str) else slot_raw
+                    try:
+                        slot = int(slot_raw) if isinstance(slot_raw, str) else slot_raw
+                        if slot < 0:
+                            console.print(
+                                "[bold red]Error:[/] Slot UID must be a non-negative integer"
+                            )
+                            raise typer.Exit(code=1)
+                    except (ValueError, TypeError):
+                        console.print(
+                            "[bold red]Error:[/] Slot UID must be a valid integer"
+                        )
+                        raise typer.Exit(code=1)
+
             miner_evm = (
                 miner_evm if miner_evm is not None else payload_data.get("miner_evm")
             )
+            if miner_evm is not None and not Web3.is_address(miner_evm):
+                console.print(
+                    "[bold red]Error:[/] Miner EVM address must be a valid EVM address"
+                )
+                raise typer.Exit(code=1)
+
             password = (
                 password if password is not None else payload_data.get("password")
             )
+            if password is not None:
+                password_normalized = _normalize_hex(password)
+                if len(password_normalized) != 66:
+                    console.print(
+                        "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+                password = password_normalized
+
             signature = (
                 signature if signature is not None else payload_data.get("signature")
             )
+            if signature is not None:
+                signature_normalized = _normalize_hex(signature)
+                if len(signature_normalized) != 132:
+                    console.print(
+                        "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
+                    )
+                    raise typer.Exit(code=1)
+                signature = signature_normalized
+
             timestamp = (
                 timestamp if timestamp is not None else payload_data.get("timestamp")
             )
@@ -1116,18 +1190,209 @@ def prove_lock(
 
             console.print(f"[dim]Loaded payload from:[/] {payload_file}")
 
-        # Only prompt if payload_file was not provided or if values are still missing
-        if chain is None:
-            chain = int(typer.prompt("Chain ID", show_default=False))
-        if vault is None:
-            vault = typer.prompt("Vault contract address", show_default=False)
-        if tx is None:
-            tx = typer.prompt("Transaction hash", show_default=False)
-        if amount is None:
-            normalized_input = typer.prompt(
-                "Lock amount in USDC (e.g. 250.5)", default="250"
+        # Ask about signature FIRST, before prompting for other fields
+        # This makes the flow more logical: if user has signature, collect it and required fields
+        # If not, collect all fields needed to generate signature
+        sign_locally: bool | None = (
+            None  # Will be set if user needs to generate signature
+        )
+        _private_key_for_signing: str | None = (
+            None  # Store private key if signing locally
+        )
+        if signature is None:
+            has_signature = Confirm.ask(
+                "[bold cyan]Do you already have an EIP-712 signature?[/]", default=False
             )
-            amount_base_units = _usdc_to_base_units(normalized_input)
+
+            if has_signature:
+                # User has signature from external wallet - collect signature and required fields
+                console.print(
+                    "\n[bold cyan]Please provide your signature and required fields:[/]"
+                )
+                while True:
+                    signature = typer.prompt(
+                        "EIP-712 signature (0x...)", show_default=False
+                    )
+                    signature_normalized = _normalize_hex(signature)
+                    # EIP-712 signature is 65 bytes = 0x + 130 hex chars
+                    if len(signature_normalized) == 132:
+                        signature = signature_normalized
+                        break
+                    console.print(
+                        "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
+                    )
+
+                if miner_evm is None:
+                    while True:
+                        miner_evm = typer.prompt(
+                            "Miner EVM address", show_default=False
+                        )
+                        if Web3.is_address(miner_evm):
+                            break
+                        console.print(
+                            "[bold red]Error:[/] Miner EVM address must be a valid EVM address (0x...)"
+                        )
+            else:
+                # Need to generate signature - get private key first if signing locally
+                sign_locally = Confirm.ask(
+                    "[bold cyan]Sign locally with private key?[/]", default=True
+                )
+
+                if sign_locally:
+                    # Get private key immediately and derive EVM address
+                    console.print(
+                        "\n[bold cyan]Please provide your EVM private key:[/]"
+                    )
+                    private_key_from_env = os.getenv("CARTHA_EVM_PK")
+                    if private_key_from_env:
+                        console.print(
+                            "[dim]Using CARTHA_EVM_PK from environment variable[/]"
+                        )
+                    else:
+                        console.print(
+                            "[dim]Tip:[/] Set CARTHA_EVM_PK environment variable to avoid prompting"
+                        )
+
+                    while True:
+                        # Get private key (from env or prompt)
+                        private_key = (
+                            private_key_from_env
+                            if private_key_from_env
+                            else typer.prompt(
+                                "EVM private key (0x...)",
+                                hide_input=True,
+                                show_default=False,
+                            )
+                        )
+
+                        # Normalize and validate private key
+                        try:
+                            private_key_normalized = _normalize_hex(private_key)
+                            if (
+                                len(private_key_normalized) != 66
+                            ):  # 0x + 64 hex chars = 32 bytes
+                                console.print(
+                                    "[bold red]Error:[/] Private key must be 32 bytes (0x + 64 hex characters)"
+                                )
+                                # If using env var, clear it so we re-prompt
+                                if private_key_from_env:
+                                    private_key_from_env = None
+                                continue
+
+                            # Derive EVM address from private key
+                            if Account is None:
+                                _exit_with_error(
+                                    "eth-account is required for EIP-712 signing. Install it with: uv sync"
+                                )
+                            account = Account.from_key(private_key_normalized)
+                            derived_evm = Web3.to_checksum_address(account.address)
+
+                            # Show derived address and confirm
+                            console.print(
+                                f"\n[bold cyan]Derived EVM address:[/] {derived_evm}"
+                            )
+                            if miner_evm is not None:
+                                if miner_evm.lower() != derived_evm.lower():
+                                    console.print(
+                                        f"[yellow]Warning:[/] Provided EVM address ({miner_evm}) "
+                                        f"does not match private key address ({derived_evm})"
+                                    )
+                                    if not typer.confirm(
+                                        "Continue anyway?", default=False
+                                    ):
+                                        # If using env var, clear it so we re-prompt
+                                        if private_key_from_env:
+                                            private_key_from_env = None
+                                        continue
+                                else:
+                                    console.print(
+                                        "[bold green]✓ EVM address matches[/]"
+                                    )
+                            else:
+                                # Confirm the derived address is correct
+                                if not Confirm.ask(
+                                    f"[bold cyan]Is this your correct EVM address?[/]",
+                                    default=True,
+                                ):
+                                    console.print(
+                                        "[bold yellow]Please use a different private key.[/]"
+                                    )
+                                    # If using env var, clear it so we re-prompt
+                                    if private_key_from_env:
+                                        private_key_from_env = None
+                                    continue
+                                miner_evm = derived_evm
+                                console.print("[bold green]✓ EVM address confirmed[/]")
+
+                            # Success - store private key for later signature generation
+                            _private_key_for_signing = private_key_normalized
+                            break
+                        except Exception as exc:
+                            console.print(
+                                f"[bold red]Error:[/] Failed to derive EVM address: {exc}"
+                            )
+                            # If using env var, clear it so we re-prompt
+                            if private_key_from_env:
+                                private_key_from_env = None
+                            continue
+                else:
+                    console.print(
+                        "\n[bold cyan]You'll need to sign externally. "
+                        "We'll collect all fields first, then show you the message to sign.[/]"
+                    )
+                    _private_key_for_signing = None
+
+        # Now prompt for all required fields (needed for both signature generation and submission)
+        # Validate each field immediately after input
+        if chain is None:
+            while True:
+                try:
+                    chain_input = typer.prompt("Chain ID", show_default=False)
+                    chain = int(chain_input)
+                    if chain <= 0:
+                        console.print(
+                            "[bold red]Error:[/] Chain ID must be a positive integer"
+                        )
+                        continue
+                    break
+                except ValueError:
+                    console.print(
+                        "[bold red]Error:[/] Chain ID must be a valid integer"
+                    )
+
+        if vault is None:
+            while True:
+                vault = typer.prompt("Vault contract address", show_default=False)
+                if Web3.is_address(vault):
+                    break
+                console.print(
+                    "[bold red]Error:[/] Vault address must be a valid EVM address (0x...)"
+                )
+
+        if tx is None:
+            while True:
+                tx = typer.prompt("Transaction hash", show_default=False)
+                tx_normalized = _normalize_hex(tx)
+                if len(tx_normalized) == 66:  # 0x + 64 hex chars = 32 bytes
+                    tx = tx_normalized
+                    break
+                console.print(
+                    "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
+                )
+
+        if amount is None:
+            while True:
+                try:
+                    normalized_input = typer.prompt(
+                        "Lock amount in USDC (e.g. 250.5)", show_default=False
+                    )
+                    amount_base_units = _usdc_to_base_units(normalized_input)
+                    if amount_base_units <= 0:
+                        console.print("[bold red]Error:[/] Amount must be positive")
+                        continue
+                    break
+                except Exception as exc:
+                    console.print(f"[bold red]Error:[/] Invalid amount: {exc}")
         else:
             # Auto-detect: if amount as int would be >= 1e9, assume base units
             # Otherwise, treat as normalized USDC
@@ -1141,114 +1406,246 @@ def prove_lock(
             except (ValueError, InvalidOperation):
                 # If not a valid number, try treating as normalized USDC
                 amount_base_units = _usdc_to_base_units(amount)
+
         if hotkey is None:
-            hotkey = typer.prompt("Hotkey SS58 address", show_default=False)
+            while True:
+                hotkey = typer.prompt("Hotkey SS58 address", show_default=False)
+                if hotkey.startswith("bt1") or hotkey.startswith("5"):
+                    if len(hotkey) >= 10:  # Basic SS58 format check
+                        break
+                console.print(
+                    "[bold red]Error:[/] Hotkey must be a valid SS58 address (starts with 'bt1' or '5')"
+                )
+
         if slot is None:
-            slot = int(typer.prompt("Slot UID", show_default=False))
-        if password is None:
-            password = typer.prompt(
-                "Pair password (0x...)", hide_input=False, show_default=False
-            )
-
-        # Handle signature: if missing, prompt for signing method
-        if signature is None:
-            has_signature = typer.confirm(
-                "Do you already have an EIP-712 signature? (y/n)", default=False
-            )
-
-            if has_signature:
-                # User has signature from external wallet
-                signature = typer.prompt(
-                    "Paste your EIP-712 signature (0x...)", show_default=False
-                )
-                if miner_evm is None:
-                    miner_evm = typer.prompt("Miner EVM address", show_default=False)
-            else:
-                # Generate signature locally
-                sign_locally = typer.confirm(
-                    "Sign locally with private key? (y/n)", default=True
-                )
-
-                if sign_locally:
-                    # Get private key from env or prompt
-                    private_key = os.getenv("CARTHA_EVM_PK")
-                    if not private_key:
+            while True:
+                try:
+                    slot_input = typer.prompt("Slot UID", show_default=False)
+                    slot = int(slot_input)
+                    if slot < 0:
                         console.print(
-                            "[dim]Tip:[/] Set CARTHA_EVM_PK environment variable to avoid prompting"
+                            "[bold red]Error:[/] Slot UID must be a non-negative integer"
                         )
-                        private_key = typer.prompt(
-                            "EVM private key (0x...)",
-                            hide_input=True,
+                        continue
+                    break
+                except ValueError:
+                    console.print(
+                        "[bold red]Error:[/] Slot UID must be a valid integer"
+                    )
+
+        if password is None:
+            while True:
+                password = typer.prompt(
+                    "Pair password (0x...)", hide_input=False, show_default=False
+                )
+                password_normalized = _normalize_hex(password)
+                if len(password_normalized) == 66:  # 0x + 64 hex chars = 32 bytes
+                    password = password_normalized
+                    break
+                console.print(
+                    "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
+                )
+
+        # Generate signature if needed (user said they don't have one)
+        if signature is None:
+            # sign_locally and _private_key_for_signing were determined above
+            if sign_locally and _private_key_for_signing:
+                # Generate timestamp if not provided
+                if timestamp is None:
+                    timestamp = int(time.time())
+
+                # Generate signature using the private key we already collected
+                console.print("\n[dim]Generating EIP-712 signature...[/]")
+                try:
+                    signature, derived_evm = _generate_eip712_signature(
+                        chain_id=chain,
+                        vault_address=vault,
+                        miner_hotkey=hotkey,
+                        slot_uid=str(slot),
+                        tx_hash=tx,
+                        amount=amount_base_units,
+                        password=password,
+                        timestamp=timestamp,
+                        private_key=_private_key_for_signing,
+                    )
+                    # Verify the address still matches (should always match since we confirmed it earlier)
+                    if miner_evm.lower() != derived_evm.lower():
+                        console.print(
+                            f"[yellow]Warning:[/] EVM address mismatch detected. "
+                            f"Expected {miner_evm}, got {derived_evm}"
+                        )
+                        if not typer.confirm("Continue anyway?", default=False):
+                            raise typer.Exit(code=1)
+                    console.print("[bold green]✓ Signature generated[/]")
+                except Exception as exc:
+                    _handle_unexpected_exception("Failed to generate signature", exc)
+            else:
+                # External signing (MetaMask, etc.)
+                # Ensure timestamp is set
+                if timestamp is None:
+                    timestamp = int(time.time())
+
+                # Ensure miner_evm is set (needed for EIP-712 message)
+                if miner_evm is None:
+                    while True:
+                        miner_evm = typer.prompt(
+                            "Miner EVM address (the address that will sign)",
                             show_default=False,
                         )
-
-                    # Generate timestamp if not provided
-                    if timestamp is None:
-                        timestamp = int(time.time())
-
-                    # Generate signature
-                    console.print("[dim]Generating EIP-712 signature...[/]")
-                    try:
-                        signature, derived_evm = _generate_eip712_signature(
-                            chain_id=chain,
-                            vault_address=vault,
-                            miner_hotkey=hotkey,
-                            slot_uid=str(slot),
-                            tx_hash=tx,
-                            amount=amount_base_units,
-                            password=password,
-                            timestamp=timestamp,
-                            private_key=private_key,
+                        if Web3.is_address(miner_evm):
+                            miner_evm = Web3.to_checksum_address(miner_evm)
+                            break
+                        console.print(
+                            "[bold red]Error:[/] Miner EVM address must be a valid EVM address (0x...)"
                         )
-                        # Use derived EVM address if not provided
-                        if miner_evm is None:
-                            miner_evm = derived_evm
-                            console.print(f"[dim]Derived EVM address:[/] {miner_evm}")
-                        elif miner_evm.lower() != derived_evm.lower():
-                            console.print(
-                                f"[yellow]Warning:[/] Provided EVM address ({miner_evm}) "
-                                f"does not match private key address ({derived_evm})"
-                            )
-                            if not typer.confirm("Continue anyway?", default=False):
-                                raise typer.Exit(code=1)
-                        console.print("[bold green]✓ Signature generated[/]")
-                    except Exception as exc:
-                        _handle_unexpected_exception(
-                            "Failed to generate signature", exc
-                        )
-                else:
-                    # External signing (MetaMask, etc.)
-                    console.print(
-                        "\n[bold cyan]Sign the EIP-712 message externally:[/]"
+
+                # Build EIP-712 message structure
+                eip712_message = LockProofMessage(
+                    chain_id=chain,
+                    vault_address=Web3.to_checksum_address(vault),
+                    miner_evm_address=miner_evm,
+                    miner_hotkey=hotkey,
+                    slot_uid=str(slot),
+                    tx_hash=tx.lower(),
+                    amount=amount_base_units,
+                    password=password.lower(),
+                    timestamp=timestamp,
+                )
+                typed_data = eip712_message.to_eip712()
+
+                # Convert HexBytes to strings for JSON serialization
+                def hexbytes_to_str(obj):
+                    """Convert HexBytes to hex string for JSON serialization."""
+                    from hexbytes import HexBytes
+
+                    if isinstance(obj, HexBytes):
+                        return obj.hex()
+                    raise TypeError(
+                        f"Object of type {type(obj)} is not JSON serializable"
                     )
-                    console.print(
-                        "[dim]Use MetaMask, ethers.js, or another wallet that supports EIP-712 signing.[/]"
-                    )
-                    console.print("\n[bold]Message structure:[/]")
-                    console.print(f"  Chain ID: {chain}")
-                    console.print(f"  Vault: {vault}")
-                    console.print(f"  Hotkey: {hotkey}")
-                    console.print(f"  Slot UID: {slot}")
-                    console.print(f"  Transaction: {tx}")
-                    console.print(f"  Amount: {amount_base_units} (base units)")
-                    console.print(f"  Password: {password}")
-                    if timestamp is None:
-                        timestamp = int(time.time())
-                    console.print(f"  Timestamp: {timestamp}")
-                    console.print(
-                        "\n[dim]See docs/EIP712_SIGNING.md for detailed signing instructions.[/]"
-                    )
+
+                # Serialize to JSON with HexBytes conversion
+                json_str = json.dumps(typed_data, default=hexbytes_to_str, indent=2)
+                json_typed_data = json.loads(json_str)
+
+                # Create output directory if it doesn't exist
+                output_dir = Path.cwd() / "cartha_eip712_outputs"
+                output_dir.mkdir(exist_ok=True)
+
+                # Generate filename with timestamp
+                timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+                json_filename = output_dir / f"eip712_message_{timestamp_str}.json"
+                txt_filename = output_dir / f"eip712_instructions_{timestamp_str}.txt"
+
+                # Save JSON file (ready to use with MetaMask, ethers.js, etc.)
+                # Use the already-serialized JSON string to preserve exact formatting
+                with open(json_filename, "w") as f:
+                    f.write(json_str)
+
+                # Create human-readable instructions file
+                human_amount = Decimal(amount_base_units) / Decimal(10**6)
+                amount_str = f"{human_amount:.6f}".rstrip("0").rstrip(".")
+
+                instructions = f"""EIP-712 LockProof Signing Instructions
+Generated: {datetime.now(timezone.utc).isoformat()}
+
+IMPORTANT: Copy the JSON from {json_filename.name} exactly as-is. Do not modify any values, spacing, or formatting.
+
+=== Message Details ===
+Chain ID: {chain}
+Vault Address: {vault}
+Miner EVM Address: {miner_evm}
+Hotkey: {hotkey}
+Slot UID: {slot}
+Transaction Hash: {tx}
+Amount: {amount_str} USDC ({amount_base_units} base units)
+Pair Password: {password}
+Timestamp: {timestamp}
+
+=== How to Sign ===
+
+Option 1: MetaMask (Browser)
+1. Open MetaMask and connect to Chain ID {chain}
+2. Open browser console (F12)
+3. Copy the entire contents of {json_filename.name} and run:
+   const message = <paste entire JSON here>;
+   const account = "0x..."; // Your MetaMask account (use window.ethereum.selectedAddress)
+   const signature = await window.ethereum.request({{
+     method: "eth_signTypedData_v4",
+     params: [account, JSON.stringify(message)]
+   }});
+   console.log("Signature:", signature);
+   
+   Note: Make sure to copy the JSON exactly as-is, including all brackets and quotes.
+
+Option 2: ethers.js
+const {{ ethers }} = require("ethers");
+const provider = new ethers.providers.Web3Provider(window.ethereum);
+const signer = provider.getSigner();
+const message = <paste JSON from {json_filename.name}>;
+const signature = await signer._signTypedData(
+  message.domain,
+  message.types,
+  message.message
+);
+console.log("Signature:", signature);
+
+Option 3: Other Tools
+Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
+
+=== After Signing ===
+1. Copy the signature (should start with 0x and be 132 characters total)
+2. Return to the CLI and paste the signature when prompted
+
+=== Security Notes ===
+- Never share your private key or pair password
+- Verify all values match your deposit transaction
+- The signature proves you control the EVM address that made the deposit
+"""
+
+                with open(txt_filename, "w") as f:
+                    f.write(instructions)
+
+                console.print("\n[bold green]✓ EIP-712 message files generated[/]")
+                console.print(f"[bold cyan]JSON file:[/] {json_filename}")
+                console.print(f"[bold cyan]Instructions:[/] {txt_filename}")
+                console.print("\n[bold yellow]Next steps:[/]")
+                console.print("1. Open the JSON file and copy its contents")
+                console.print(
+                    "2. Use MetaMask, ethers.js, or another EIP-712 compatible tool to sign"
+                )
+                console.print("3. Copy the signature (0x + 130 hex characters)")
+                console.print("4. Return here and paste the signature when prompted")
+                console.print(
+                    "\n[dim]Tip:[/] The JSON file is formatted exactly as needed - copy it as-is without modifications."
+                )
+                console.print(
+                    "\n[bold cyan]Press Enter when you have your signature ready...[/]"
+                )
+                input()  # Wait for user to press Enter
+
+                while True:
                     signature = typer.prompt(
                         "Paste your EIP-712 signature (0x...)", show_default=False
                     )
-                    if miner_evm is None:
-                        miner_evm = typer.prompt(
-                            "Miner EVM address", show_default=False
-                        )
+                    signature_normalized = _normalize_hex(signature)
+                    # EIP-712 signature is 65 bytes = 0x + 130 hex chars
+                    if len(signature_normalized) == 132:
+                        signature = signature_normalized
+                        break
+                    console.print(
+                        "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
+                    )
 
         # Ensure miner_evm is set if signature was provided but miner_evm wasn't
         if miner_evm is None:
-            miner_evm = typer.prompt("Miner EVM address", show_default=False)
+            while True:
+                miner_evm = typer.prompt("Miner EVM address", show_default=False)
+                if Web3.is_address(miner_evm):
+                    break
+                console.print(
+                    "[bold red]Error:[/] Miner EVM address must be a valid EVM address (0x...)"
+                )
 
         # Ensure timestamp is set (required for signature verification)
         if timestamp is None:
