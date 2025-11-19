@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from pathlib import Path
 
@@ -39,7 +40,14 @@ DEFAULT_VAULT = (
     "0x00000000000000000000000000000000000000aa"  # lowercase for consistency
 )
 DEFAULT_TX = "0x1111111111111111111111111111111111111111111111111111111111111111"
-DEFAULT_AMOUNT = "250"  # USDC
+
+
+def get_random_amount() -> str:
+    """Generate a random float amount between 100 and 9999 USDC."""
+    # Random float between 100.0 and 9999.0
+    amount = random.uniform(100.0, 9999.0)
+    # Round to 2 decimal places for USDC
+    return f"{amount:.2f}"
 
 
 def _normalize_hex(value: str, prefix: str = "0x") -> str:
@@ -79,9 +87,9 @@ def main(
         help=f"Transaction hash (default: mock hash for demo).",
     ),
     amount: str = typer.Option(
-        DEFAULT_AMOUNT,
+        None,
         "--amount",
-        help=f"Deposit amount in USDC (default: {DEFAULT_AMOUNT}).",
+        help=f"Deposit amount in USDC. If not provided, you'll be prompted.",
     ),
     hotkey: str = typer.Option(
         None, "--hotkey", help="Miner hotkey (SS58). Required if not in env."
@@ -102,7 +110,7 @@ def main(
     - Chain: 31337 (local/test)
     - Vault: Mock allowlisted vault address
     - TX: Mock transaction hash
-    - Amount: 250 USDC (default)
+    - Amount: Prompted (defaults to a random float amount, 100-9999 USDC)
 
     Set DEMO_SKIP_LOCKPROOF=1 in verifier to bypass on-chain validation.
     """
@@ -121,6 +129,14 @@ def main(
             "Transaction hash must be 32 bytes (0x + 64 hex chars)."
         )
 
+    # Prompt for amount if not provided
+    if amount is None:
+        random_default = get_random_amount()
+        amount = Prompt.ask(
+            f"Deposit amount in USDC",
+            default=random_default,
+        )
+    
     amount_base_units = to_base_units(amount)
 
     # Get required inputs from args or env
@@ -159,6 +175,10 @@ def main(
     account = Account.from_key(private_key)
     miner_evm = Web3.to_checksum_address(account.address)
 
+    # Get current timestamp
+    import time
+    timestamp = int(time.time())
+
     # Build EIP-712 message
     message = LockProofMessage(
         chain_id=chain,
@@ -169,6 +189,7 @@ def main(
         tx_hash=tx_hash,
         amount=amount_base_units,
         password=password,
+        timestamp=timestamp,
     )
 
     # Sign the message
@@ -192,6 +213,7 @@ def main(
         "slot": slot,
         "miner_evm": miner_evm,
         "password": password,
+        "timestamp": timestamp,
         "signature": signature_normalized,
     }
 

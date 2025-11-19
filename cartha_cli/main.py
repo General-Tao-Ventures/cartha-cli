@@ -819,6 +819,9 @@ def _submit_lock_proof_payload(
     if not signature.startswith("0x"):
         signature = "0x" + signature
 
+    # Get current timestamp
+    timestamp = int(time.time())
+
     return {
         "vaultAddress": Web3.to_checksum_address(vault),
         "minerEvmAddress": Web3.to_checksum_address(miner_evm),
@@ -828,6 +831,7 @@ def _submit_lock_proof_payload(
         "txHash": tx_hash.lower(),
         "amount": amount,
         "pwd": password,
+        "timestamp": timestamp,
         "signature": signature,
     }
 
