@@ -1,6 +1,6 @@
 # Cartha CLI - Testnet Setup Guide
 
-This guide will help you set up and use the Cartha CLI on the public testnet.
+This guide will help you set up and use the Cartha CLI on the public testnet. This folder contains helper scripts and complete instructions for testing the Cartha subnet.
 
 ## Prerequisites
 
@@ -8,22 +8,34 @@ This guide will help you set up and use the Cartha CLI on the public testnet.
 - [`uv`](https://github.com/astral-sh/uv) package manager (or `pip`)
 - Bittensor wallet (for subnet registration)
 - Access to the testnet verifier URL
+- Testnet TAO (required for subnet registration)
+
+### Getting Testnet TAO
+
+You'll need testnet TAO to register your hotkey to the subnet. Get testnet TAO from the faucet:
+
+🔗 **Testnet TAO Faucet**: <https://app.minersunion.ai/testnet-faucet>
+
+Simply visit the faucet and request testnet TAO to your wallet address. You'll need TAO in your wallet to pay for subnet registration.
 
 ### Installing `uv`
 
 If you don't have `uv` installed, you can install it with:
 
 **macOS/Linux:**
+
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 **Windows (PowerShell):**
+
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
 **Or via pip:**
+
 ```bash
 pip install uv
 ```
@@ -42,6 +54,7 @@ uv sync  # Creates .venv automatically and installs dependencies
 ```
 
 Then use `uv run` to execute commands (it automatically uses the project's virtual environment):
+
 ```bash
 uv run cartha --help  # Runs in the project's virtual environment
 ```
@@ -61,13 +74,13 @@ Set the following environment variables:
 
 ```bash
 # Required: Testnet verifier URL
-export CARTHA_VERIFIER_URL="https://your-verifier-url.run.app"
+export CARTHA_VERIFIER_URL="https://cartha-verifier-826542474079.us-central1.run.app"
 
 # Required: Bittensor network configuration
 export CARTHA_NETWORK="test"  # Use "test" for testnet
 export CARTHA_NETUID=78       # Testnet subnet UID
 
-# Optional: EVM private key (for demo)
+# Optional: EVM private key (for demo - will be generated in Step 2)
 export CARTHA_EVM_PK="your-demo-evm-private-key"
 
 # Optional: Custom wallet path
@@ -86,6 +99,12 @@ curl "${CARTHA_VERIFIER_URL}/health"
 
 ## Testnet Workflow
 
+### Step 0: Get Testnet TAO (if needed)
+
+Before registering, make sure you have testnet TAO in your wallet. If you need testnet TAO, visit the faucet:
+
+🔗 **Testnet TAO Faucet**: <https://app.minersunion.ai/testnet-faucet>
+
 ### Step 1: Register Your Hotkey
 
 Register your hotkey to the testnet subnet:
@@ -99,30 +118,31 @@ uv run cartha register \
 ```
 
 This will:
+
 - Register your hotkey to subnet 78 (testnet)
 - Fetch your slot UID
 - Retrieve your pair password
 - Display your registration details
 
 **Save the output** - you'll need:
+
 - Slot UID
 - Pair password (starts with `0x`)
 
 ### Step 2: Generate Demo EVM Key
 
-For testnet, you can use a demo EVM key:
+For testnet, you can use a demo EVM key. Use the helper script in this folder:
 
 ```bash
-# From repository root
-cd demo
-python create_demo_evm_key.py --output ../demo_outputs/evm_key.json
+# From cartha-cli repository root
+uv run python testnet/create_demo_evm_key.py --output testnet/outputs/evm_key.json
 ```
 
 This creates a demo private key and address. Export it:
 
 ```bash
-export CARTHA_EVM_PK=$(jq -r .CARTHA_EVM_PK demo_outputs/evm_key.json)
-export CARTHA_DEMO_EVM_ADDRESS=$(jq -r .CARTHA_DEMO_EVM_ADDRESS demo_outputs/evm_key.json)
+export CARTHA_EVM_PK=$(jq -r .CARTHA_EVM_PK testnet/outputs/evm_key.json)
+export CARTHA_DEMO_EVM_ADDRESS=$(jq -r .CARTHA_DEMO_EVM_ADDRESS testnet/outputs/evm_key.json)
 ```
 
 ### Step 3: Build Lock Proof
@@ -130,17 +150,18 @@ export CARTHA_DEMO_EVM_ADDRESS=$(jq -r .CARTHA_DEMO_EVM_ADDRESS demo_outputs/evm
 Create a lock proof using demo data:
 
 ```bash
-# From repository root
-python demo/build_lock_proof.py \
+# From cartha-cli repository root
+uv run python testnet/build_lock_proof.py \
   --hotkey <your-hotkey-ss58> \
   --slot <your-slot-uid> \
   --pwd <your-pair-password>
 ```
 
 This will:
+
 - Generate a mock lock proof payload
 - Sign it with your demo EVM key
-- Save the payload to `demo_outputs/lock_proof_payload.json`
+- Save the payload to `testnet/outputs/lock_proof_payload.json`
 
 ### Step 4: Submit Lock Proof
 
@@ -148,19 +169,19 @@ Submit your lock proof to the verifier:
 
 ```bash
 # Load payload
-PAYLOAD=$(cat demo_outputs/lock_proof_payload.json)
+PAYLOAD=$(cat testnet/outputs/lock_proof_payload.json)
 
 # Submit using CLI
 uv run cartha prove-lock \
-  --chain $(jq -r .chain demo_outputs/lock_proof_payload.json) \
-  --vault $(jq -r .vault demo_outputs/lock_proof_payload.json) \
-  --tx $(jq -r .tx demo_outputs/lock_proof_payload.json) \
-  --amount $(jq -r .amountNormalized demo_outputs/lock_proof_payload.json) \
-  --hotkey $(jq -r .hotkey demo_outputs/lock_proof_payload.json) \
-  --slot $(jq -r .slot demo_outputs/lock_proof_payload.json) \
-  --miner-evm $(jq -r .miner_evm demo_outputs/lock_proof_payload.json) \
-  --pwd $(jq -r .password demo_outputs/lock_proof_payload.json) \
-  --signature $(jq -r .signature demo_outputs/lock_proof_payload.json)
+  --chain $(jq -r .chain testnet/outputs/lock_proof_payload.json) \
+  --vault $(jq -r .vault testnet/outputs/lock_proof_payload.json) \
+  --tx $(jq -r .tx testnet/outputs/lock_proof_payload.json) \
+  --amount $(jq -r .amountNormalized testnet/outputs/lock_proof_payload.json) \
+  --hotkey $(jq -r .hotkey testnet/outputs/lock_proof_payload.json) \
+  --slot $(jq -r .slot testnet/outputs/lock_proof_payload.json) \
+  --miner-evm $(jq -r .miner_evm testnet/outputs/lock_proof_payload.json) \
+  --pwd $(jq -r .password testnet/outputs/lock_proof_payload.json) \
+  --signature $(jq -r .signature testnet/outputs/lock_proof_payload.json)
 ```
 
 Or use the command printed by `build_lock_proof.py`.
@@ -176,6 +197,64 @@ uv run cartha pair status \
   --hotkey <your-hotkey-ss58> \
   --slot <your-slot-uid>
 ```
+
+## Helper Scripts
+
+This folder contains helper scripts for testing the Cartha CLI on the public testnet.
+
+### `create_demo_evm_key.py`
+
+Generates a throwaway EVM keypair for demo purposes. This key is used to sign lock proofs in testnet mode.
+
+**Usage:**
+
+```bash
+# From cartha-cli repository root
+uv run python testnet/create_demo_evm_key.py --output testnet/outputs/evm_key.json
+
+# Export the key to your environment
+export CARTHA_EVM_PK=$(jq -r .CARTHA_EVM_PK testnet/outputs/evm_key.json)
+export CARTHA_DEMO_EVM_ADDRESS=$(jq -r .CARTHA_DEMO_EVM_ADDRESS testnet/outputs/evm_key.json)
+```
+
+**Options:**
+
+- `--output` - Path to write JSON blob containing `CARTHA_EVM_PK` and address
+- `--overwrite` - Allow overwriting an existing output file
+
+### `build_lock_proof.py`
+
+Assembles and signs a demo LockProof payload with mock data. This creates a lock proof that can be submitted to the testnet verifier.
+
+**Usage:**
+
+```bash
+# From cartha-cli repository root
+uv run python testnet/build_lock_proof.py \
+  --hotkey <your-hotkey-ss58> \
+  --slot <your-slot-uid> \
+  --pwd <your-pair-password>
+
+# The script will print the command to submit the proof
+```
+
+**Options:**
+
+- `--chain` - EVM chain ID (default: 31337 for demo)
+- `--vault` - Vault contract address (default: `0x00000000000000000000000000000000000000aa`)
+- `--tx` - Transaction hash (default: mock hash)
+- `--amount` - Deposit amount in USDC (default: 250)
+- `--hotkey` - Miner hotkey (SS58) - required
+- `--slot` - Miner slot UID - required
+- `--pwd` - Pair password (0x...) - required
+- `--output` - Output file path (default: `testnet/outputs/lock_proof_payload.json`)
+
+## Outputs
+
+Generated files are saved to `testnet/outputs/` (this folder is gitignored):
+
+- `evm_key.json` - Generated EVM keypair with `CARTHA_EVM_PK` and `CARTHA_DEMO_EVM_ADDRESS`
+- `lock_proof_payload.json` - Lock proof payload ready for submission
 
 ## Demo Mode Notes
 
@@ -198,7 +277,7 @@ The demo uses these defaults:
 You can override these in `build_lock_proof.py`:
 
 ```bash
-python demo/build_lock_proof.py \
+uv run python testnet/build_lock_proof.py \
   --chain 31337 \
   --vault 0x00000000000000000000000000000000000000aa \
   --tx 0x1111111111111111111111111111111111111111111111111111111111111111 \
@@ -241,6 +320,7 @@ uv run cartha register \
 **Problem**: CLI can't connect to verifier
 
 **Solution**:
+
 ```bash
 # Verify environment variable is set
 echo $CARTHA_VERIFIER_URL
@@ -249,7 +329,7 @@ echo $CARTHA_VERIFIER_URL
 curl "${CARTHA_VERIFIER_URL}/health"
 
 # If using a different URL, update it
-export CARTHA_VERIFIER_URL="https://correct-url.run.app"
+export CARTHA_VERIFIER_URL="https://cartha-verifier-826542474079.us-central1.run.app"
 ```
 
 ### "Invalid pair password"
@@ -257,6 +337,7 @@ export CARTHA_VERIFIER_URL="https://correct-url.run.app"
 **Problem**: Pair password mismatch
 
 **Solution**:
+
 - Re-register to get a new pair password
 - Ensure you're using the correct hotkey/slot combination
 - Check that the verifier HMAC key hasn't changed
@@ -266,6 +347,7 @@ export CARTHA_VERIFIER_URL="https://correct-url.run.app"
 **Problem**: CLI can't find your Bittensor wallet
 
 **Solution**:
+
 ```bash
 # Check default wallet location
 ls ~/.bittensor/wallets/
@@ -279,6 +361,7 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 **Problem**: Can't connect to Bittensor network
 
 **Solution**:
+
 - Verify `CARTHA_NETWORK` is set to `"test"` for testnet
 - Check your internet connection
 - Try using a VPN if network is blocked
@@ -288,6 +371,7 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 **Problem**: Lock proof signature is invalid
 
 **Solution**:
+
 - Ensure `CARTHA_EVM_PK` matches the key used to sign
 - Regenerate the lock proof with `build_lock_proof.py`
 - Verify the signature in the payload JSON
@@ -305,23 +389,23 @@ uv run cartha pair status --wallet-name test --wallet-hotkey test \
   --hotkey <hotkey-from-registration> --slot <slot-from-registration>
 
 # 3. Generate demo key
-python demo/create_demo_evm_key.py
+uv run python testnet/create_demo_evm_key.py --output testnet/outputs/evm_key.json
+export CARTHA_EVM_PK=$(jq -r .CARTHA_EVM_PK testnet/outputs/evm_key.json)
 
 # 4. Build and submit proof
-python demo/build_lock_proof.py --hotkey <hotkey> --slot <slot> --pwd <password>
+uv run python testnet/build_lock_proof.py --hotkey <hotkey> --slot <slot> --pwd <password>
 # Then submit using the printed command
 ```
 
 ## Next Steps
 
-- Complete the [Demo Workflow](../demo/README.md)
 - Check the [Main README](../README.md) for advanced usage
-- Review [Validator Setup](../cartha-subnet-validator/docs/TESTNET_SETUP.md) if running a validator
-- Provide feedback via [GitHub Issues](../../.github/ISSUE_TEMPLATE/)
+- Review [Validator Setup](../../cartha-subnet-validator/docs/TESTNET_SETUP.md) if running a validator
+- Provide feedback via [GitHub Issues](https://github.com/your-org/cartha-cli/issues)
 
 ## Additional Resources
 
 - [CLI README](../README.md) - Full CLI documentation
-- [Testnet Guide](../../TESTNET_GUIDE.md) - Overall testnet overview
-- [Demo Guide](../../demo/README.md) - Detailed demo workflow
-
+- Testnet helper scripts are in this `testnet/` folder:
+  - `testnet/create_demo_evm_key.py` - Generate demo EVM keys
+  - `testnet/build_lock_proof.py` - Build lock proof payloads

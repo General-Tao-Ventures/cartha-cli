@@ -212,6 +212,8 @@ def _ensure_pair_registered(
     slot: str,
     hotkey: str,
 ) -> None:
+    subtensor = None
+    metagraph = None
     try:
         subtensor = get_subtensor(network)
         metagraph = subtensor.metagraph(netuid)
@@ -239,6 +241,25 @@ def _ensure_pair_registered(
             raise typer.Exit(code=1)
         # Re-raise other exceptions as-is
         raise
+    finally:
+        # Clean up connections to prevent hanging
+        # Bittensor subtensor objects maintain persistent connections that need explicit cleanup
+        try:
+            if metagraph is not None:
+                # Clean up metagraph reference first
+                del metagraph
+        except Exception:
+            pass
+        try:
+            if subtensor is not None:
+                # Try to close the subtensor connection if the method exists
+                if hasattr(subtensor, "close"):
+                    subtensor.close()
+                # Force cleanup by deleting reference to release connections
+                del subtensor
+        except Exception:
+            # Ignore cleanup errors - connections will be garbage collected eventually
+            pass
 
 
 def _load_wallet(
@@ -763,6 +784,9 @@ def pair_status(
         console.print(
             "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
         )
+    
+    # Explicitly return to ensure clean exit
+    return
 
 
 def _submit_lock_proof_payload(
@@ -795,6 +819,9 @@ def _submit_lock_proof_payload(
     if not signature.startswith("0x"):
         signature = "0x" + signature
 
+    # Get current timestamp
+    timestamp = int(time.time())
+
     return {
         "vaultAddress": Web3.to_checksum_address(vault),
         "minerEvmAddress": Web3.to_checksum_address(miner_evm),
@@ -804,6 +831,7 @@ def _submit_lock_proof_payload(
         "txHash": tx_hash.lower(),
         "amount": amount,
         "pwd": password,
+        "timestamp": timestamp,
         "signature": signature,
     }
 

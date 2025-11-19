@@ -19,6 +19,7 @@ class LockProofMessage:
     tx_hash: str
     amount: int
     password: str
+    timestamp: int
 
     def to_eip712(self) -> Dict[str, Any]:
         domain = {
@@ -41,6 +42,7 @@ class LockProofMessage:
                 {"name": "txHash", "type": "bytes32"},
                 {"name": "amount", "type": "uint256"},
                 {"name": "pwd", "type": "bytes32"},
+                {"name": "timestamp", "type": "uint256"},
             ]
         }
         message = {
@@ -52,6 +54,7 @@ class LockProofMessage:
             "txHash": HexBytes(self.tx_hash),
             "amount": self.amount,
             "pwd": HexBytes(self.password),
+            "timestamp": self.timestamp,
         }
         return {"domain": domain, "types": types, "primaryType": "LockProof", "message": message}
 
