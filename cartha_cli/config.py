@@ -10,7 +10,9 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    verifier_url: str = Field("http://127.0.0.1:8000", alias="CARTHA_VERIFIER_URL")
+    verifier_url: str = Field(
+        "https://cartha-verifier-826542474079.us-central1.run.app", alias="CARTHA_VERIFIER_URL"
+    )
     network: str = Field("finney", alias="CARTHA_NETWORK")
     netuid: int = Field(35, alias="CARTHA_NETUID")
     evm_private_key: str | None = Field(None, alias="CARTHA_EVM_PK")
