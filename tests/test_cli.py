@@ -556,6 +556,7 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
             True,  # "Do you already have an EIP-712 signature? (y/n)" -> y
             "0x" + "66" * 65,  # Paste signature
             "0x1111111111111111111111111111111111111111",  # EVM address
+            "1234567890",  # Timestamp used when signing
             "30",  # Lock period in days
             True,  # "Submit this lock proof to the verifier?" -> y
         ]

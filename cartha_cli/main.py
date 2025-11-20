@@ -173,10 +173,10 @@ def _usdc_to_base_units(value: str) -> int:
 
 def _get_current_epoch_start(reference: datetime | None = None) -> datetime:
     """Calculate the start of the current epoch (Friday 00:00 UTC).
-    
+
     Args:
         reference: Reference datetime (defaults to now in UTC)
-        
+
     Returns:
         Datetime of the current epoch start (Friday 00:00 UTC)
     """
@@ -198,10 +198,10 @@ def _get_current_epoch_start(reference: datetime | None = None) -> datetime:
 
 def _get_next_epoch_freeze_time(reference: datetime | None = None) -> datetime:
     """Calculate the next epoch freeze time (next Friday 00:00 UTC).
-    
+
     Args:
         reference: Reference datetime (defaults to now in UTC)
-        
+
     Returns:
         Datetime of the next epoch freeze (next Friday 00:00 UTC)
     """
@@ -213,21 +213,21 @@ def _get_next_epoch_freeze_time(reference: datetime | None = None) -> datetime:
 
 def _format_countdown(seconds: float) -> str:
     """Format seconds into a human-readable countdown string.
-    
+
     Args:
         seconds: Number of seconds remaining
-        
+
     Returns:
         Formatted string like "2d 5h 30m 15s"
     """
     if seconds < 0:
         return "0s"
-    
+
     days = int(seconds // 86400)
     hours = int((seconds % 86400) // 3600)
     minutes = int((seconds % 3600) // 60)
     secs = int(seconds % 60)
-    
+
     parts = []
     if days > 0:
         parts.append(f"{days}d")
@@ -237,13 +237,13 @@ def _format_countdown(seconds: float) -> str:
         parts.append(f"{minutes}m")
     if secs > 0 or not parts:
         parts.append(f"{secs}s")
-    
+
     return " ".join(parts)
 
 
 def _get_local_timezone() -> ZoneInfo:
     """Get the local timezone, with fallbacks.
-    
+
     Returns:
         ZoneInfo object for local timezone
     """
@@ -258,42 +258,42 @@ def _get_local_timezone() -> ZoneInfo:
 
 def _get_clock_table() -> Table:
     """Create a table with current time (UTC and local) and countdown to next epoch freeze.
-    
+
     Returns:
         Table with clock and countdown information
     """
     now_utc = datetime.now(tz=UTC)
     local_tz = _get_local_timezone()
     now_local = now_utc.astimezone(local_tz)
-    
+
     # Format current time
     utc_str = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
     local_str = now_local.strftime("%Y-%m-%d %H:%M:%S %Z")
-    
+
     # Calculate next epoch freeze
     next_freeze_utc = _get_next_epoch_freeze_time(now_utc)
     next_freeze_local = next_freeze_utc.astimezone(local_tz)
-    
+
     # Calculate countdown
     time_until_freeze = (next_freeze_utc - now_utc).total_seconds()
     countdown_str = _format_countdown(time_until_freeze)
-    
+
     # Format next freeze times
     next_freeze_utc_str = next_freeze_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
     next_freeze_local_str = next_freeze_local.strftime("%Y-%m-%d %H:%M:%S %Z")
-    
+
     # Create table
     clock_table = Table(show_header=False, box=box.SIMPLE)
     clock_table.add_column(style="cyan")
     clock_table.add_column(style="yellow")
-    
+
     clock_table.add_row("Current time (UTC)", utc_str)
     clock_table.add_row("Current time (Local)", local_str)
     clock_table.add_row("", "")  # Spacer
     clock_table.add_row("Next epoch freeze (UTC)", next_freeze_utc_str)
     clock_table.add_row("Next epoch freeze (Local)", next_freeze_local_str)
     clock_table.add_row("Countdown", countdown_str)
-    
+
     return clock_table
 
 
@@ -332,7 +332,7 @@ def _print_root_help() -> None:
     clock_table = _get_clock_table()
     console.print(clock_table)
     console.print()
-    
+
     console.print("[dim]Made with ❤ by GTV[/]")
 
 
@@ -397,12 +397,12 @@ def _get_uid_from_hotkey(
     hotkey: str,
 ) -> int | None:
     """Get the UID for a hotkey on the subnet.
-    
+
     Args:
         network: Bittensor network name
         netuid: Subnet netuid
         hotkey: Hotkey SS58 address
-        
+
     Returns:
         UID if registered, None if not registered or deregistered
     """
@@ -412,7 +412,7 @@ def _get_uid_from_hotkey(
         subtensor = get_subtensor(network)
         if not subtensor.is_hotkey_registered(hotkey, netuid=netuid):
             return None
-        
+
         # Try to get UID using get_uid_for_hotkey_on_subnet if available
         try:
             uid = subtensor.get_uid_for_hotkey_on_subnet(hotkey_ss58=hotkey, netuid=netuid)
@@ -421,13 +421,13 @@ def _get_uid_from_hotkey(
         except AttributeError:
             # Fallback to metagraph if method doesn't exist
             pass
-        
+
         # Fallback: use metagraph to find UID
         metagraph = subtensor.metagraph(netuid)
         for i, registered_hotkey in enumerate(metagraph.hotkeys):
             if registered_hotkey == hotkey:
                 return i
-        
+
         return None
     except Exception as exc:
         error_msg = str(exc)
@@ -850,7 +850,7 @@ def pair_status(
         console.print("[bold cyan]Loading wallet...[/]")
         wallet = _load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
-        
+
         # Fetch UID automatically if not provided
         if slot is None:
             console.print("[bold cyan]Fetching UID from subnet...[/]")
@@ -866,7 +866,7 @@ def pair_status(
                 )
                 raise typer.Exit(code=0)
             console.print(f"[bold green]Found UID: {slot}[/]")
-        
+
         slot_id = str(slot)
         _ensure_pair_registered(network=network, netuid=netuid, slot=slot_id, hotkey=hotkey)
 
@@ -1493,7 +1493,7 @@ def prove_lock(
                         console.print(
                             "[bold red]Error:[/] Miner EVM address must be a valid EVM address (0x...)"
                         )
-                
+
                 # Ask for timestamp if not provided (required for signature verification)
                 # The timestamp must match the one used when creating the signature
                 if timestamp is None:
@@ -1508,7 +1508,9 @@ def prove_lock(
                             )
                             timestamp = int(timestamp_input)
                             if timestamp <= 0:
-                                console.print("[bold red]Error:[/] Timestamp must be a positive integer")
+                                console.print(
+                                    "[bold red]Error:[/] Timestamp must be a positive integer"
+                                )
                                 continue
                             break
                         except ValueError:
@@ -1691,9 +1693,11 @@ def prove_lock(
                     "[bold red]Error:[/] Cannot fetch UID: hotkey must be provided first."
                 )
                 raise typer.Exit(code=1)
-            
+
             console.print("[bold cyan]Fetching UID from subnet...[/]")
-            slot = _get_uid_from_hotkey(network=settings.network, netuid=settings.netuid, hotkey=hotkey)
+            slot = _get_uid_from_hotkey(
+                network=settings.network, netuid=settings.netuid, hotkey=hotkey
+            )
             if slot is None:
                 console.print(
                     "[bold yellow]Hotkey is not registered or has been deregistered[/] "
@@ -1991,7 +1995,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             )
             console.print(summary_table)
             console.print()
-            
+
             # Display clock and countdown
             _display_clock_and_countdown()
         else:
