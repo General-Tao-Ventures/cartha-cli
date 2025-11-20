@@ -56,7 +56,7 @@ def _request(
             detail = data.get("detail") or data.get("error") or response.text
         else:
             detail = response.text or "Unknown verifier error"
-        
+
         # Handle FastAPI validation errors which return detail as a list
         if isinstance(detail, list):
             # Format list of validation errors into a readable string
@@ -75,15 +75,16 @@ def _request(
             detail = detail.strip()
         else:
             detail = str(detail)
-        
+
         # Log error details for debugging (only in debug mode or for 500 errors)
         if response.status_code >= 500:
             import logging
+
             logger = logging.getLogger(__name__)
             logger.debug(f"Verifier error - URL: {url}")
             logger.debug(f"Verifier error - Status: {response.status_code}")
             logger.debug(f"Verifier error - Response: {response.text[:500]}")
-        
+
         raise VerifierError(detail, status_code=response.status_code)
 
     if not isinstance(data, dict):
