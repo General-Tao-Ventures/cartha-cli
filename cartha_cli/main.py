@@ -395,6 +395,7 @@ def _get_uid_from_hotkey(
     network: str,
     netuid: int,
     hotkey: str,
+    timeout: int = 15,  # Timeout for Bittensor network calls
 ) -> int | None:
     """Get the UID for a hotkey on the subnet.
 
@@ -402,6 +403,7 @@ def _get_uid_from_hotkey(
         network: Bittensor network name
         netuid: Subnet netuid
         hotkey: Hotkey SS58 address
+        timeout: Timeout in seconds for network calls (default: 15)
 
     Returns:
         UID if registered, None if not registered or deregistered

@@ -39,7 +39,7 @@ def _request(
             params=params,
             json=json_data,
             headers=headers,
-            timeout=10,
+            timeout=30,  # Increased from 10s to handle slow database queries and network latency
         )
     except requests.RequestException as exc:  # pragma: no cover - network failure
         # Provide more context about the failed URL
