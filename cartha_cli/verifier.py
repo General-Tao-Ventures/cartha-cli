@@ -76,6 +76,14 @@ def _request(
         else:
             detail = str(detail)
         
+        # Log error details for debugging (only in debug mode or for 500 errors)
+        if response.status_code >= 500:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Verifier error - URL: {url}")
+            logger.debug(f"Verifier error - Status: {response.status_code}")
+            logger.debug(f"Verifier error - Response: {response.text[:500]}")
+        
         raise VerifierError(detail, status_code=response.status_code)
 
     if not isinstance(data, dict):
