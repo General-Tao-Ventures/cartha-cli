@@ -56,7 +56,27 @@ def _request(
             detail = data.get("detail") or data.get("error") or response.text
         else:
             detail = response.text or "Unknown verifier error"
-        raise VerifierError(detail.strip(), status_code=response.status_code)
+        
+        # Handle FastAPI validation errors which return detail as a list
+        if isinstance(detail, list):
+            # Format list of validation errors into a readable string
+            formatted_errors = []
+            for item in detail:
+                if isinstance(item, dict):
+                    # Extract field location and message
+                    loc = item.get("loc", [])
+                    msg = item.get("msg", "Validation error")
+                    field = " -> ".join(str(x) for x in loc) if loc else "unknown"
+                    formatted_errors.append(f"{field}: {msg}")
+                else:
+                    formatted_errors.append(str(item))
+            detail = "; ".join(formatted_errors)
+        elif isinstance(detail, str):
+            detail = detail.strip()
+        else:
+            detail = str(detail)
+        
+        raise VerifierError(detail, status_code=response.status_code)
 
     if not isinstance(data, dict):
         raise VerifierError("Unexpected verifier response payload.")
