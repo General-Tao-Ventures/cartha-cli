@@ -127,6 +127,7 @@ class LockProofMessage:
     amount: int
     password: str
     timestamp: int
+    lock_days: int
 
     def to_eip712(self) -> dict[str, Any]:
         domain = {
@@ -150,6 +151,7 @@ class LockProofMessage:
                 {"name": "amount", "type": "uint256"},
                 {"name": "pwd", "type": "bytes32"},
                 {"name": "timestamp", "type": "uint256"},
+                {"name": "lockDays", "type": "uint64"},
             ],
         }
         message = {
@@ -162,6 +164,7 @@ class LockProofMessage:
             "amount": self.amount,
             "pwd": HexBytes(self.password),
             "timestamp": self.timestamp,
+            "lockDays": self.lock_days,
         }
         return {
             "domain": domain,

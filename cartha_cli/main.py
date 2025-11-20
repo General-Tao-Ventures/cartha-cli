@@ -837,6 +837,7 @@ def _submit_lock_proof_payload(
     password: str,
     signature: str,
     timestamp: int | None = None,
+    lock_days: int,
 ) -> dict[str, Any]:
     if amount <= 0:
         console.print("[bold red]Amount must be a positive integer.[/]")
@@ -871,6 +872,7 @@ def _submit_lock_proof_payload(
         "pwd": password,
         "timestamp": timestamp,
         "signature": signature,
+        "lockDays": lock_days,
     }
 
 
@@ -884,6 +886,7 @@ def _generate_eip712_signature(
     amount: int,
     password: str,
     timestamp: int,
+    lock_days: int,
     private_key: str,
 ) -> tuple[str, str]:
     """Generate EIP-712 signature for LockProof.
@@ -897,6 +900,7 @@ def _generate_eip712_signature(
         amount: Amount in base units
         password: Pair password (0x-prefixed hex)
         timestamp: Unix timestamp
+        lock_days: Lock period in days (7-365)
         private_key: EVM private key (0x-prefixed hex)
 
     Returns:
@@ -933,6 +937,7 @@ def _generate_eip712_signature(
         amount=amount,
         password=password_normalized,
         timestamp=timestamp,
+        lock_days=lock_days,
     )
 
     # Sign the message
@@ -1051,6 +1056,12 @@ def prove_lock(
         help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
         show_default=False,
     ),
+    lock_days: int | None = typer.Option(  # noqa: B008
+        None,
+        "--lock-days",
+        help="Lock period in days (min 7, max 365). Required for lock proof submission.",
+        show_default=False,
+    ),
     json_output: bool = typer.Option(False, "--json", help="Emit the verifier response as JSON."),
 ) -> None:
     """Submit a LockProof derived from the given on-chain deposit."""
@@ -1158,6 +1169,11 @@ def prove_lock(
                 signature = signature_normalized
 
             timestamp = timestamp if timestamp is not None else payload_data.get("timestamp")
+            lock_days = (
+                lock_days
+                if lock_days is not None
+                else payload_data.get("lock_days") or payload_data.get("lockDays")
+            )
 
             # Validate that all required fields are present
             missing_fields = []
@@ -1181,6 +1197,8 @@ def prove_lock(
                 missing_fields.append("signature")
             if timestamp is None:
                 missing_fields.append("timestamp")
+            if lock_days is None:
+                missing_fields.append("lock_days")
 
             if missing_fields:
                 console.print(
@@ -1455,6 +1473,23 @@ def prove_lock(
                     "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
                 )
 
+        if lock_days is None:
+            while True:
+                try:
+                    lock_days_input = typer.prompt(
+                        "Lock period in days (min 7, max 365)",
+                        show_default=False,
+                    )
+                    lock_days = int(lock_days_input)
+                    if lock_days < 7 or lock_days > 365:
+                        console.print(
+                            "[bold red]Error:[/] Lock period must be between 7 and 365 days"
+                        )
+                        continue
+                    break
+                except ValueError:
+                    console.print("[bold red]Error:[/] Lock period must be a valid integer")
+
         # Generate signature if needed (user said they don't have one)
         if signature is None:
             # sign_locally and _private_key_for_signing were determined above
@@ -1475,6 +1510,7 @@ def prove_lock(
                         amount=amount_base_units,
                         password=password,
                         timestamp=timestamp,
+                        lock_days=lock_days,
                         private_key=_private_key_for_signing,
                     )
                     # Convert to ChecksumAddress for comparison
@@ -1521,6 +1557,7 @@ def prove_lock(
                     amount=amount_base_units,
                     password=password.lower(),
                     timestamp=timestamp,
+                    lock_days=lock_days,
                 )
                 typed_data = eip712_message.to_eip712()
 
@@ -1669,6 +1706,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
         assert password is not None, "Pair password must be set"
         assert signature is not None, "Signature must be set"
         assert timestamp is not None, "Timestamp must be set"
+        assert lock_days is not None, "Lock days must be set"
 
         slot_id = str(slot)
         payload = _submit_lock_proof_payload(
@@ -1682,6 +1720,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             password=password,
             signature=signature,
             timestamp=timestamp,
+            lock_days=lock_days,
         )
 
         # Show summary and confirm before submission
