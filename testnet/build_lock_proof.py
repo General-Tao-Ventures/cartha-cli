@@ -46,6 +46,11 @@ def get_random_amount() -> str:
     return f"{amount:.2f}"
 
 
+def get_random_lock_days() -> int:
+    """Generate a random lock period between 7 and 365 days."""
+    return random.randint(7, 365)
+
+
 def _normalize_hex(value: str, prefix: str = "0x") -> str:
     value = value.strip()
     if not value.startswith(prefix):
@@ -171,18 +176,23 @@ def main(
     account = Account.from_key(private_key)
     miner_evm = Web3.to_checksum_address(account.address)
 
-    # Prompt for lock_days if not provided
+    # Prompt for lock_days if not provided (with random default)
     if lock_days is None:
-        lock_days = Prompt.ask(
+        random_default = get_random_lock_days()
+        lock_days_input = Prompt.ask(
             "Lock period in days (min 7, max 365)",
-            default="7",
+            default=str(random_default),
         )
         try:
-            lock_days = int(lock_days)
+            lock_days = int(lock_days_input)
             if lock_days < 7 or lock_days > 365:
                 raise typer.BadParameter("Lock period must be between 7 and 365 days.")
         except ValueError:
             raise typer.BadParameter("Lock period must be a valid integer.")
+    else:
+        # Validate provided lock_days
+        if lock_days < 7 or lock_days > 365:
+            raise typer.BadParameter("Lock period must be between 7 and 365 days.")
 
     # Get current timestamp
     import time
