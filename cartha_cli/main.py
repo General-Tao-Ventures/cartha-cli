@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, NoReturn
@@ -171,6 +171,139 @@ def _usdc_to_base_units(value: str) -> int:
     return int(quantized * Decimal(10**6))
 
 
+def _get_current_epoch_start(reference: datetime | None = None) -> datetime:
+    """Calculate the start of the current epoch (Friday 00:00 UTC).
+
+    Args:
+        reference: Reference datetime (defaults to now in UTC)
+
+    Returns:
+        Datetime of the current epoch start (Friday 00:00 UTC)
+    """
+    reference = reference or datetime.now(tz=UTC)
+    weekday = reference.weekday()  # Monday=0, Friday=4
+    days_since_friday = (weekday - 4) % 7
+    candidate = datetime(
+        year=reference.year,
+        month=reference.month,
+        day=reference.day,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+        tzinfo=UTC,
+    )
+    return candidate - timedelta(days=days_since_friday)
+
+
+def _get_next_epoch_freeze_time(reference: datetime | None = None) -> datetime:
+    """Calculate the next epoch freeze time (next Friday 00:00 UTC).
+
+    Args:
+        reference: Reference datetime (defaults to now in UTC)
+
+    Returns:
+        Datetime of the next epoch freeze (next Friday 00:00 UTC)
+    """
+    current_start = _get_current_epoch_start(reference)
+    # If we're exactly at epoch start, next is in 7 days
+    # Otherwise, next is current + 7 days
+    return current_start + timedelta(days=7)
+
+
+def _format_countdown(seconds: float) -> str:
+    """Format seconds into a human-readable countdown string.
+
+    Args:
+        seconds: Number of seconds remaining
+
+    Returns:
+        Formatted string like "2d 5h 30m 15s"
+    """
+    if seconds < 0:
+        return "0s"
+
+    days = int(seconds // 86400)
+    hours = int((seconds % 86400) // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+    if secs > 0 or not parts:
+        parts.append(f"{secs}s")
+
+    return " ".join(parts)
+
+
+def _get_local_timezone() -> ZoneInfo:
+    """Get the local timezone, with fallbacks.
+
+    Returns:
+        ZoneInfo object for local timezone
+    """
+    try:
+        return ZoneInfo("local")
+    except Exception:
+        fallback_tz = datetime.now().astimezone().tzinfo
+        if fallback_tz is None:
+            return ZoneInfo("UTC")
+        return fallback_tz  # type: ignore[return-value]
+
+
+def _get_clock_table() -> Table:
+    """Create a table with current time (UTC and local) and countdown to next epoch freeze.
+
+    Returns:
+        Table with clock and countdown information
+    """
+    now_utc = datetime.now(tz=UTC)
+    local_tz = _get_local_timezone()
+    now_local = now_utc.astimezone(local_tz)
+
+    # Format current time
+    utc_str = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+    local_str = now_local.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    # Calculate next epoch freeze
+    next_freeze_utc = _get_next_epoch_freeze_time(now_utc)
+    next_freeze_local = next_freeze_utc.astimezone(local_tz)
+
+    # Calculate countdown
+    time_until_freeze = (next_freeze_utc - now_utc).total_seconds()
+    countdown_str = _format_countdown(time_until_freeze)
+
+    # Format next freeze times
+    next_freeze_utc_str = next_freeze_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
+    next_freeze_local_str = next_freeze_local.strftime("%Y-%m-%d %H:%M:%S %Z")
+
+    # Create table
+    clock_table = Table(show_header=False, box=box.SIMPLE)
+    clock_table.add_column(style="cyan")
+    clock_table.add_column(style="yellow")
+
+    clock_table.add_row("Current time (UTC)", utc_str)
+    clock_table.add_row("Current time (Local)", local_str)
+    clock_table.add_row("", "")  # Spacer
+    clock_table.add_row("Next epoch freeze (UTC)", next_freeze_utc_str)
+    clock_table.add_row("Next epoch freeze (Local)", next_freeze_local_str)
+    clock_table.add_row("Countdown", countdown_str)
+
+    return clock_table
+
+
+def _display_clock_and_countdown() -> None:
+    """Display current time (UTC and local) and countdown to next epoch freeze."""
+    clock_table = _get_clock_table()
+    console.print(clock_table)
+    console.print()
+
+
 def _print_root_help() -> None:
     console.print(Rule("[bold cyan]Cartha CLI[/]"))
     console.print(
@@ -195,18 +328,11 @@ def _print_root_help() -> None:
     console.print(commands)
     console.print()
 
-    env_table = Table(title="Environment", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
-    env_table.add_row(
-        "CARTHA_VERIFIER_URL",
-        "Verifier endpoint (default https://cartha-verifier-826542474079.us-central1.run.app)",
-    )
-    env_table.add_row("CARTHA_NETWORK / CARTHA_NETUID", "Default network + subnet (finney / 35).")
-    env_table.add_row(
-        "BITTENSOR_WALLET_PATH",
-        "Override wallet path if keys are not in the default location.",
-    )
-    console.print(env_table)
+    # Display clock and countdown in a separate table
+    clock_table = _get_clock_table()
+    console.print(clock_table)
     console.print()
+
     console.print("[dim]Made with ❤ by GTV[/]")
 
 
@@ -262,6 +388,73 @@ def version() -> None:
         console.print(f"[bold white]cartha-cli[/] {version('cartha-cli')}")
     except PackageNotFoundError:  # pragma: no cover
         console.print("[bold white]cartha-cli[/] 0.0.0")
+
+
+def _get_uid_from_hotkey(
+    *,
+    network: str,
+    netuid: int,
+    hotkey: str,
+) -> int | None:
+    """Get the UID for a hotkey on the subnet.
+
+    Args:
+        network: Bittensor network name
+        netuid: Subnet netuid
+        hotkey: Hotkey SS58 address
+
+    Returns:
+        UID if registered, None if not registered or deregistered
+    """
+    subtensor = None
+    metagraph = None
+    try:
+        subtensor = get_subtensor(network)
+        if not subtensor.is_hotkey_registered(hotkey, netuid=netuid):
+            return None
+
+        # Try to get UID using get_uid_for_hotkey_on_subnet if available
+        try:
+            uid = subtensor.get_uid_for_hotkey_on_subnet(hotkey_ss58=hotkey, netuid=netuid)
+            if uid is not None and uid >= 0:
+                return int(uid)
+        except AttributeError:
+            # Fallback to metagraph if method doesn't exist
+            pass
+
+        # Fallback: use metagraph to find UID
+        metagraph = subtensor.metagraph(netuid)
+        for i, registered_hotkey in enumerate(metagraph.hotkeys):
+            if registered_hotkey == hotkey:
+                return i
+
+        return None
+    except Exception as exc:
+        error_msg = str(exc)
+        if "nodename" in error_msg.lower() or "servname" in error_msg.lower():
+            console.print(
+                f"[bold red]Network error[/]: Unable to connect to Bittensor {network} network: {error_msg}"
+            )
+            console.print(
+                "[yellow]This might be a DNS/network connectivity issue. Please check your internet connection.[/]"
+            )
+            raise typer.Exit(code=1) from None
+        # Re-raise other exceptions as-is
+        raise
+    finally:
+        # Clean up connections
+        try:
+            if metagraph is not None:
+                del metagraph
+        except Exception:
+            pass
+        try:
+            if subtensor is not None:
+                if hasattr(subtensor, "close"):
+                    subtensor.close()
+                del subtensor
+        except Exception:
+            pass
 
 
 def _ensure_pair_registered(
@@ -502,6 +695,10 @@ def register(
     if registration_cost is not None:
         console.print(f"[bold]The cost to register by recycle is[/] {registration_cost:.4f} τ")
 
+    # Display clock and countdown
+    console.print()
+    _display_clock_and_countdown()
+
     # Confirmation prompt
     if not typer.confirm("\nDo you want to continue?", default=False):
         console.print("[bold yellow]Registration cancelled.[/]")
@@ -638,11 +835,10 @@ def pair_status(
         help="Hotkey name used for signing.",
         show_default=False,
     ),
-    slot: int = typer.Option(
-        ...,
+    slot: int | None = typer.Option(
+        None,
         "--slot",
-        prompt="Slot UID",
-        help="Subnet UID assigned to the miner.",
+        help="Subnet UID assigned to the miner. If not provided, will be fetched automatically.",
         show_default=False,
     ),
     network: str = typer.Option(settings.network, "--network", help="Bittensor network name."),
@@ -651,9 +847,26 @@ def pair_status(
 ) -> None:
     """Show the verifier state for a miner pair."""
     try:
-        console.print("[bold cyan]Validating miner UID:hotkey ownership...[/]")
+        console.print("[bold cyan]Loading wallet...[/]")
         wallet = _load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
+
+        # Fetch UID automatically if not provided
+        if slot is None:
+            console.print("[bold cyan]Fetching UID from subnet...[/]")
+            slot = _get_uid_from_hotkey(network=network, netuid=netuid, hotkey=hotkey)
+            if slot is None:
+                console.print(
+                    "[bold yellow]Hotkey is not registered or has been deregistered[/] "
+                    f"on netuid {netuid} ({network} network)."
+                )
+                console.print(
+                    "[yellow]You do not belong to any UID at the moment.[/] "
+                    "Please register your hotkey first using 'cartha register'."
+                )
+                raise typer.Exit(code=0)
+            console.print(f"[bold green]Found UID: {slot}[/]")
+
         slot_id = str(slot)
         _ensure_pair_registered(network=network, netuid=netuid, slot=slot_id, hotkey=hotkey)
 
@@ -774,6 +987,9 @@ def pair_status(
                 "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
             )
         return
+
+    # Display clock and countdown
+    _display_clock_and_countdown()
 
     table = Table(title="Pair Status", show_header=False)
     table.add_row("Hotkey", hotkey)
@@ -1029,7 +1245,7 @@ def prove_lock(
     slot: int | None = typer.Option(
         None,
         "--slot",
-        help="Subnet UID assigned to the miner.",
+        help="Subnet UID assigned to the miner. If not provided, will be fetched automatically from the hotkey.",
         show_default=False,
     ),
     miner_evm: str | None = typer.Option(
@@ -1277,6 +1493,28 @@ def prove_lock(
                         console.print(
                             "[bold red]Error:[/] Miner EVM address must be a valid EVM address (0x...)"
                         )
+
+                # Ask for timestamp if not provided (required for signature verification)
+                # The timestamp must match the one used when creating the signature
+                if timestamp is None:
+                    console.print(
+                        "[yellow]Note:[/] The timestamp must match the one used when creating the signature."
+                    )
+                    while True:
+                        try:
+                            timestamp_input = typer.prompt(
+                                "Timestamp used when signing (Unix timestamp in seconds)",
+                                show_default=False,
+                            )
+                            timestamp = int(timestamp_input)
+                            if timestamp <= 0:
+                                console.print(
+                                    "[bold red]Error:[/] Timestamp must be a positive integer"
+                                )
+                                continue
+                            break
+                        except ValueError:
+                            console.print("[bold red]Error:[/] Timestamp must be a valid integer")
             else:
                 # Need to generate signature - get private key first if signing locally
                 sign_locally = Confirm.ask(
@@ -1449,16 +1687,28 @@ def prove_lock(
                 )
 
         if slot is None:
-            while True:
-                try:
-                    slot_input = typer.prompt("Slot UID", show_default=False)
-                    slot = int(slot_input)
-                    if slot < 0:
-                        console.print("[bold red]Error:[/] Slot UID must be a non-negative integer")
-                        continue
-                    break
-                except ValueError:
-                    console.print("[bold red]Error:[/] Slot UID must be a valid integer")
+            # Fetch UID automatically from hotkey
+            if hotkey is None:
+                console.print(
+                    "[bold red]Error:[/] Cannot fetch UID: hotkey must be provided first."
+                )
+                raise typer.Exit(code=1)
+
+            console.print("[bold cyan]Fetching UID from subnet...[/]")
+            slot = _get_uid_from_hotkey(
+                network=settings.network, netuid=settings.netuid, hotkey=hotkey
+            )
+            if slot is None:
+                console.print(
+                    "[bold yellow]Hotkey is not registered or has been deregistered[/] "
+                    f"on netuid {settings.netuid} ({settings.network} network)."
+                )
+                console.print(
+                    "[yellow]You do not belong to any UID at the moment.[/] "
+                    "Please register your hotkey first using 'cartha register'."
+                )
+                raise typer.Exit(code=0)
+            console.print(f"[bold green]Found UID: {slot}[/]")
 
         if password is None:
             while True:
@@ -1738,12 +1988,16 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             summary_table.add_row("Hotkey", hotkey)
             summary_table.add_row("Slot UID", slot_id)
             summary_table.add_row("EVM Address", miner_evm)
+            summary_table.add_row("Lock Days", str(lock_days))
             summary_table.add_row(
                 "Signature",
                 payload["signature"][:20] + "..." + payload["signature"][-10:],
             )
             console.print(summary_table)
             console.print()
+
+            # Display clock and countdown
+            _display_clock_and_countdown()
         else:
             # In JSON mode, show a simple summary before confirmation
             console.print(
