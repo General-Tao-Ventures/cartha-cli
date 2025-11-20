@@ -92,6 +92,11 @@ def main(
     ),
     slot: str = typer.Option(None, "--slot", help="Miner slot UID. Required if not in env."),
     pwd: str = typer.Option(None, "--pwd", help="Pair password (0x...). Required if not in env."),
+    lock_days: int = typer.Option(  # noqa: B008
+        None,
+        "--lock-days",
+        help="Lock period in days (min 7, max 365). If not provided, you'll be prompted.",
+    ),
     output: Path = typer.Option(  # noqa: B008
         OUTPUT_PATH, "--output", help="Where to store the generated payload JSON."
     ),
@@ -166,6 +171,19 @@ def main(
     account = Account.from_key(private_key)
     miner_evm = Web3.to_checksum_address(account.address)
 
+    # Prompt for lock_days if not provided
+    if lock_days is None:
+        lock_days = Prompt.ask(
+            "Lock period in days (min 7, max 365)",
+            default="7",
+        )
+        try:
+            lock_days = int(lock_days)
+            if lock_days < 7 or lock_days > 365:
+                raise typer.BadParameter("Lock period must be between 7 and 365 days.")
+        except ValueError:
+            raise typer.BadParameter("Lock period must be a valid integer.")
+
     # Get current timestamp
     import time
 
@@ -182,6 +200,7 @@ def main(
         amount=amount_base_units,
         password=password,
         timestamp=timestamp,
+        lock_days=lock_days,
     )
 
     # Sign the message
@@ -207,6 +226,7 @@ def main(
         "password": password,
         "timestamp": timestamp,
         "signature": signature_normalized,
+        "lock_days": lock_days,
     }
 
     # Save to file
@@ -228,6 +248,7 @@ def main(
         f"  --miner-evm {miner_evm} \\\n"
         f"  --pwd {password} \\\n"
         f"  --timestamp {timestamp} \\\n"
+        f"  --lock-days {lock_days} \\\n"
         f"  --signature {payload['signature']}[/]"
     )
     console.print(
