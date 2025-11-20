@@ -33,14 +33,29 @@ def _request(
     url = _build_url(path)
 
     try:
+        # Use separate connection and read timeouts
+        # Connection timeout: 5s (fast fail if can't connect)
+        # Read timeout: 60s (allow time for response to arrive after connection established)
+        # This helps when verifier processes quickly but response transmission is slow
         response = requests.request(
             method,
             url,
             params=params,
             json=json_data,
             headers=headers,
-            timeout=30,  # Increased from 10s to handle slow database queries and network latency
+            timeout=(5, 60),  # (connect_timeout, read_timeout) in seconds
         )
+    except requests.Timeout as exc:
+        # Explicitly handle timeout - request took longer than allowed
+        # This could be connection timeout (5s) or read timeout (60s)
+        error_msg = (
+            f"Request to verifier timed out: {url}\n"
+            "This is a CLI-side timeout.\n"
+            "If verifier logs show request completed, this is likely slow network response transmission.\n"
+            "Possible causes: network latency, large response size, or slow connection.\n"
+            "Tip: Try again in a moment or check verifier logs to confirm request was processed."
+        )
+        raise VerifierError(error_msg) from exc
     except requests.RequestException as exc:  # pragma: no cover - network failure
         # Provide more context about the failed URL
         error_msg = f"Failed to reach verifier at {url}: {exc}"

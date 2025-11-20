@@ -403,7 +403,6 @@ def _get_uid_from_hotkey(
     network: str,
     netuid: int,
     hotkey: str,
-    timeout: int = 30,  # Increased timeout to allow Bittensor network calls more time
 ) -> int | None:
     """Get the UID for a hotkey on the subnet.
 
@@ -411,26 +410,18 @@ def _get_uid_from_hotkey(
         network: Bittensor network name
         netuid: Subnet netuid
         hotkey: Hotkey SS58 address
-        timeout: Timeout in seconds for network calls (default: 20)
 
     Returns:
         UID if registered, None if not registered or deregistered
     """
-    from concurrent.futures import (
-        ThreadPoolExecutor,
-        TimeoutError as FutureTimeoutError,
-    )
-
     subtensor = None
-    metagraph = None
 
-    def _fetch_uid():
-        nonlocal subtensor, metagraph
+    try:
         subtensor = get_subtensor(network)
-        if not subtensor.is_hotkey_registered(hotkey, netuid=netuid):
-            return None
 
-        # Try to get UID using get_uid_for_hotkey_on_subnet if available
+        # Try to get UID directly - if successful, they're registered
+        # No need to check is_hotkey_registered() first (redundant)
+        # No need for metagraph() fallback (too slow, causes timeouts)
         try:
             uid = subtensor.get_uid_for_hotkey_on_subnet(
                 hotkey_ss58=hotkey, netuid=netuid
@@ -438,41 +429,16 @@ def _get_uid_from_hotkey(
             if uid is not None and uid >= 0:
                 return int(uid)
         except AttributeError:
-            # Fallback to metagraph if method doesn't exist
-            pass
-
-        # Fallback: use metagraph to find UID
-        # This is the slowest operation - most likely to timeout
-        # Only use as last resort - prefer get_uid_for_hotkey_on_subnet above
-        try:
-            metagraph = subtensor.metagraph(netuid)
-            for i, registered_hotkey in enumerate(metagraph.hotkeys):
-                if registered_hotkey == hotkey:
-                    return i
+            # Method doesn't exist in this bittensor version
+            # Return None rather than falling back to slow metagraph()
+            return None
         except Exception:
-            # If metagraph fails, return None rather than hanging
+            # Any other error means not registered or network issue
             return None
 
         return None
-
-    try:
-        with ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_fetch_uid)
-            try:
-                return future.result(timeout=timeout)
-            except FutureTimeoutError:
-                console.print(
-                    f"[bold yellow]Timeout[/]: Bittensor network call took longer than {timeout}s. "
-                    "This may be due to network latency or Bittensor RPC issues."
-                )
-                console.print(
-                    "[yellow]Tip: Try again in a moment, or check your internet connection.[/]"
-                )
-                raise typer.Exit(code=1) from None
     except Exception as exc:
         error_msg = str(exc)
-        if isinstance(exc, typer.Exit):
-            raise
         if "nodename" in error_msg.lower() or "servname" in error_msg.lower():
             console.print(
                 f"[bold red]Network error[/]: Unable to connect to Bittensor {network} network: {error_msg}"
@@ -485,11 +451,6 @@ def _get_uid_from_hotkey(
         raise
     finally:
         # Clean up connections
-        try:
-            if metagraph is not None:
-                del metagraph
-        except Exception:
-            pass
         try:
             if subtensor is not None:
                 if hasattr(subtensor, "close"):
@@ -644,7 +605,14 @@ def _request_pair_status_or_password(
         if mode == "password":
             return fetch_pair_password(**request_kwargs)
     except VerifierError as exc:
-        console.print(f"[bold red]Verifier request failed[/]: {exc}")
+        # Check if it's a timeout error
+        error_msg = str(exc)
+        if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+            console.print(f"[bold red]Request timed out[/]")
+            # Print the full error message (may be multi-line)
+            console.print(f"[yellow]{error_msg}[/]")
+        else:
+            console.print(f"[bold red]Verifier request failed[/]: {exc}")
         raise typer.Exit(code=1) from exc
     raise RuntimeError(f"Unknown mode {mode}")  # pragma: no cover
 
@@ -908,8 +876,13 @@ def pair_status(
     slot: int | None = typer.Option(
         None,
         "--slot",
-        help="Subnet UID assigned to the miner. If not provided, will be fetched automatically.",
+        help="Subnet UID assigned to the miner. If not provided, will prompt for input.",
         show_default=False,
+    ),
+    auto_fetch_uid: bool = typer.Option(
+        True,
+        "--auto-fetch-uid/--no-auto-fetch-uid",
+        help="Automatically fetch UID from Bittensor network (default: enabled). Use --no-auto-fetch-uid to prompt for UID.",
     ),
     network: str = typer.Option(
         settings.network, "--network", help="Bittensor network name."
@@ -925,41 +898,55 @@ def pair_status(
         wallet = _load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
 
-        # Fetch UID automatically if not provided
-        # If fetch fails, prompt user to enter it manually
+        # Fetch UID automatically by default, prompt if disabled
         if slot is None:
-            console.print("[bold cyan]Fetching UID from subnet...[/]")
-            try:
-                slot = _get_uid_from_hotkey(
-                    network=network, netuid=netuid, hotkey=hotkey
-                )
-                if slot is None:
-                    console.print(
-                        "[bold yellow]Hotkey is not registered or has been deregistered[/] "
-                        f"on netuid {netuid} ({network} network)."
+            if auto_fetch_uid:
+                # Auto-fetch enabled (default) - try to fetch from network
+                console.print("[bold cyan]Fetching UID from subnet...[/]")
+                try:
+                    slot = _get_uid_from_hotkey(
+                        network=network, netuid=netuid, hotkey=hotkey
                     )
+                    if slot is None:
+                        console.print(
+                            "[bold yellow]Hotkey is not registered or has been deregistered[/] "
+                            f"on netuid {netuid} ({network} network)."
+                        )
+                        console.print(
+                            "[yellow]You do not belong to any UID at the moment.[/] "
+                            "Please register your hotkey first using 'cartha register'."
+                        )
+                        raise typer.Exit(code=0)
+                    console.print(f"[bold green]Found UID: {slot}[/]")
+                except typer.Exit:
+                    raise
+                except Exception as exc:
                     console.print(
-                        "[yellow]You do not belong to any UID at the moment.[/] "
-                        "Please register your hotkey first using 'cartha register'."
+                        "[bold red]Failed to fetch UID automatically[/]: This may be due to Bittensor network issues."
                     )
-                    raise typer.Exit(code=0)
-                console.print(f"[bold green]Found UID: {slot}[/]")
-            except typer.Exit:
-                raise
-            except Exception as exc:
+                    console.print("[yellow]Falling back to manual input...[/]")
+                    try:
+                        slot_input = typer.prompt("Enter your slot UID", type=int)
+                        slot = slot_input
+                        console.print(f"[bold green]Using UID: {slot}[/]")
+                    except (ValueError, KeyboardInterrupt):
+                        console.print("[bold red]Invalid UID or cancelled.[/]")
+                        raise typer.Exit(code=1) from exc
+            else:
+                # Auto-fetch disabled (--no-auto-fetch-uid) - prompt for UID
                 console.print(
-                    "[bold yellow]Failed to fetch UID automatically[/]: This may be due to Bittensor network issues."
-                )
-                console.print(
-                    "[yellow]Please enter your UID manually (you can find it from 'cartha register' output or previous runs).[/]"
+                    "[bold cyan]UID not provided.[/] "
+                    "[yellow]Auto-fetch disabled. Enter UID manually.[/]"
                 )
                 try:
-                    slot_input = typer.prompt("Enter your slot UID", type=int)
+                    slot_input = typer.prompt(
+                        "Enter your slot UID (from 'cartha register' output)", type=int
+                    )
                     slot = slot_input
                     console.print(f"[bold green]Using UID: {slot}[/]")
                 except (ValueError, KeyboardInterrupt):
                     console.print("[bold red]Invalid UID or cancelled.[/]")
-                    raise typer.Exit(code=1) from exc
+                    raise typer.Exit(code=1)
 
         slot_id = str(slot)
         # Skip metagraph check - verifier will validate the pair anyway
@@ -995,7 +982,47 @@ def pair_status(
         )
     except typer.Exit:
         raise
+    except VerifierError as exc:
+        # VerifierError is already handled in _request_pair_status_or_password
+        # But if it somehow reaches here, handle it
+        error_msg = str(exc)
+        if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
+            console.print(f"[bold red]Request timed out[/]")
+            # Print the full error message (may be multi-line)
+            console.print(f"[yellow]{error_msg}[/]")
+        else:
+            console.print(f"[bold red]Verifier request failed[/]: {exc}")
+        raise typer.Exit(code=1) from exc
     except Exception as exc:
+        # Check if it's a timeout-related error (even if wrapped)
+        error_msg = str(exc)
+        error_type = type(exc).__name__
+
+        # Check for timeout indicators in the exception
+        is_timeout = (
+            "timed out" in error_msg.lower()
+            or "timeout" in error_msg.lower()
+            or error_type == "Timeout"
+            or (
+                hasattr(exc, "__cause__")
+                and exc.__cause__ is not None
+                and (
+                    "timeout" in str(exc.__cause__).lower()
+                    or "Timeout" in type(exc.__cause__).__name__
+                )
+            )
+        )
+
+        if is_timeout:
+            console.print(f"[bold red]Request timed out[/]")
+            console.print(
+                f"[yellow]CLI failed to reach Cartha verifier\n"
+                f"Possible causes: Network latency or the verifier is receiving too many requests\n"
+                f"Tip: Try again in a moment\n"
+                f"Error details: {error_msg}[/]"
+            )
+            raise typer.Exit(code=1) from exc
+
         _handle_unexpected_exception("Unable to fetch pair status", exc)
 
     initial_status = dict(status)
@@ -1353,8 +1380,13 @@ def prove_lock(
     slot: int | None = typer.Option(
         None,
         "--slot",
-        help="Subnet UID assigned to the miner. If not provided, will be fetched automatically from the hotkey.",
+        help="Subnet UID assigned to the miner. If not provided, will prompt for input.",
         show_default=False,
+    ),
+    auto_fetch_uid: bool = typer.Option(
+        True,
+        "--auto-fetch-uid/--no-auto-fetch-uid",
+        help="Automatically fetch UID from Bittensor network (default: enabled). Use --no-auto-fetch-uid to prompt for UID.",
     ),
     miner_evm: str | None = typer.Option(
         None,
@@ -1854,33 +1886,65 @@ def prove_lock(
                 )
 
         if slot is None:
-            # Fetch UID automatically from hotkey
-            if hotkey is None:
-                console.print(
-                    "[bold red]Error:[/] Cannot fetch UID: hotkey must be provided first."
-                )
-                raise typer.Exit(code=1)
+            # Fetch UID automatically by default, prompt if disabled
+            if auto_fetch_uid:
+                # Auto-fetch enabled (default) - try to fetch from network
+                if hotkey is None:
+                    console.print(
+                        "[bold red]Error:[/] Cannot fetch UID: hotkey must be provided first."
+                    )
+                    raise typer.Exit(code=1)
 
-            console.print("[bold cyan]Fetching UID from subnet...[/]")
-            slot = _get_uid_from_hotkey(
-                network=settings.network, netuid=settings.netuid, hotkey=hotkey
-            )
-            if slot is None:
+                console.print("[bold cyan]Fetching UID from subnet...[/]")
+                try:
+                    slot = _get_uid_from_hotkey(
+                        network=settings.network, netuid=settings.netuid, hotkey=hotkey
+                    )
+                    if slot is None:
+                        console.print(
+                            "[bold yellow]Hotkey is not registered or has been deregistered[/] "
+                            f"on netuid {settings.netuid} ({settings.network} network)."
+                        )
+                        console.print(
+                            "[yellow]You do not belong to any UID at the moment.[/] "
+                            "Please register your hotkey first using 'cartha register'."
+                        )
+                        raise typer.Exit(code=0)
+                    console.print(f"[bold green]Found UID: {slot}[/]")
+                except typer.Exit:
+                    raise
+                except Exception as exc:
+                    console.print(
+                        "[bold red]Failed to fetch UID automatically[/]: This may be due to Bittensor network issues."
+                    )
+                    console.print("[yellow]Falling back to manual input...[/]")
+                    try:
+                        slot_input = typer.prompt("Enter your slot UID", type=int)
+                        slot = slot_input
+                        console.print(f"[bold green]Using UID: {slot}[/]")
+                    except (ValueError, KeyboardInterrupt):
+                        console.print("[bold red]Invalid UID or cancelled.[/]")
+                        raise typer.Exit(code=1) from exc
+            else:
+                # Auto-fetch disabled (--no-auto-fetch-uid) - prompt for UID
                 console.print(
-                    "[bold yellow]Hotkey is not registered or has been deregistered[/] "
-                    f"on netuid {settings.netuid} ({settings.network} network)."
+                    "[bold cyan]UID not provided.[/] "
+                    "[yellow]Auto-fetch disabled. Enter UID manually.[/]"
                 )
-                console.print(
-                    "[yellow]You do not belong to any UID at the moment.[/] "
-                    "Please register your hotkey first using 'cartha register'."
-                )
-                raise typer.Exit(code=0)
-            console.print(f"[bold green]Found UID: {slot}[/]")
+                try:
+                    slot_input = typer.prompt(
+                        "Enter your slot UID (from 'cartha register' output)", type=int
+                    )
+                    slot = slot_input
+                    console.print(f"[bold green]Using UID: {slot}[/]")
+                except (ValueError, KeyboardInterrupt):
+                    console.print("[bold red]Invalid UID or cancelled.[/]")
+                    raise typer.Exit(code=1)
 
         if password is None:
             while True:
                 password = typer.prompt(
-                    "Pair password (0x...)", hide_input=False, show_default=False
+                    "Pair password (0x...)", hide_input=True, show_default=False
                 )
                 password_normalized = _normalize_hex(password)
                 if len(password_normalized) == 66:  # 0x + 64 hex chars = 32 bytes
@@ -2238,7 +2302,7 @@ def claim_deposit(
         None, "--miner-evm", prompt="Miner EVM address", show_default=False
     ),
     password: str | None = typer.Option(
-        None, "--pwd", prompt="Pair password (0x...)", show_default=False
+        None, "--pwd", help="Pair password (0x...)", show_default=False
     ),
     signature: str | None = typer.Option(
         None, "--signature", prompt="EIP-712 signature (0x...)", show_default=False
