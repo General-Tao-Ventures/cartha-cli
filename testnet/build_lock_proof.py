@@ -187,8 +187,8 @@ def main(
             lock_days = int(lock_days_input)
             if lock_days < 7 or lock_days > 365:
                 raise typer.BadParameter("Lock period must be between 7 and 365 days.")
-        except ValueError:
-            raise typer.BadParameter("Lock period must be a valid integer.")
+        except ValueError as exc:
+            raise typer.BadParameter("Lock period must be a valid integer.") from exc
     else:
         # Validate provided lock_days
         if lock_days < 7 or lock_days > 365:
