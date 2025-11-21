@@ -45,6 +45,10 @@ Check the status of your miner pair on the Cartha Network. This command signs a 
 
 The happy path. Submit a lock proof for your USDC deposit to the verifier. This command handles the entire EIP-712 signing workflow, supporting both local signing (with your EVM private key) and external signing (MetaMask, hardware wallets, etc.).
 
+### `cartha extend-lock`
+
+Extend your lock period by submitting a new lock proof with updated lock days. This command automatically retrieves your current lock proof details and allows you to update the lock period. **Important:** This REPLACES your lock days (calculated from current time), not extends them.
+
 ### `cartha claim-deposit` - *`Not Recommended!`*
 
 An alias for `prove-lock` designed for deposit-first workflows. Use this command if you've already made your USDC deposit and want to claim it by submitting a lock proof.

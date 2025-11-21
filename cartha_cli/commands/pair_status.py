@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 import bittensor as bt
@@ -63,7 +63,23 @@ def pair_status(
         False, "--json", help="Emit the raw JSON response."
     ),
 ) -> None:
-    """Show the verifier state for a miner pair."""
+    """Show the verifier state for a miner pair.
+    
+    State Legend:
+    ════════════════════════════════════════════════════════════════
+    
+    1. active   - In current frozen epoch, earning rewards
+    
+    2. verified - Has lock proof, not in current active epoch
+    
+    3. pending  - Registered, no lock proof submitted yet
+    
+    4. revoked  - Revoked (deregistered or evicted)
+    
+    5. unknown  - No pair record found
+    
+    ════════════════════════════════════════════════════════════════
+    """
     try:
         console.print("[bold cyan]Loading wallet...[/]")
         wallet = load_wallet(wallet_name, wallet_hotkey, None)
@@ -306,6 +322,27 @@ def pair_status(
             amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
             table.add_row("Verified lock amount", f"{amount_str} USDC")
 
+        # Show lock days and expiration
+        lock_days = sanitized.get("lock_days")
+        if lock_days is not None:
+            table.add_row("Lock days", str(lock_days))
+
+        expires_at = sanitized.get("expires_at")
+        if expires_at is not None:
+            # Format expiration datetime (date + time for urgency)
+            try:
+                if isinstance(expires_at, str):
+                    # Parse ISO format datetime string
+                    dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    formatted_expires = format_timestamp(dt.timestamp())
+                elif isinstance(expires_at, datetime):
+                    formatted_expires = format_timestamp(expires_at.timestamp())
+                else:
+                    formatted_expires = str(expires_at)
+                table.add_row("Expires at", formatted_expires)
+            except Exception:
+                table.add_row("Expires at", str(expires_at))
+
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
     if issued_at:
@@ -333,9 +370,76 @@ def pair_status(
     if password:
         table.add_row("Pair password", password)
     console.print(table)
+
+    # Show warnings and reminders
     if password:
+        console.print()
         console.print(
-            "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+            "[bold yellow]🔐 Keep your password safe[/] — Exposure might allow others to steal your locked USDC rewards."
+        )
+
+    # Show detailed status information for verified/active pairs
+    if state in ("verified", "active"):
+        in_upcoming_epoch = sanitized.get("in_upcoming_epoch")
+        expires_at = sanitized.get("expires_at")
+
+        console.print()
+        console.print("[bold cyan]━━━ Epoch Status ━━━[/]")
+
+        # Upcoming epoch inclusion status
+        if in_upcoming_epoch:
+            console.print(
+                "[bold green]✓ Included in upcoming epoch[/] — You will receive rewards for the next epoch."
+            )
+        elif in_upcoming_epoch is False:
+            console.print(
+                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha extend-lock[/] or [bold]cartha prove-lock[/] to be included."
+            )
+
+        # Expiration date information and warnings
+        if expires_at:
+            try:
+                # Parse expiration datetime
+                if isinstance(expires_at, str):
+                    exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                elif isinstance(expires_at, datetime):
+                    exp_dt = expires_at
+                else:
+                    exp_dt = None
+
+                if exp_dt:
+                    now = datetime.now(UTC)
+                    time_until_expiry = (exp_dt - now).total_seconds()
+                    days_until_expiry = time_until_expiry / 86400
+
+                    console.print()
+                    console.print("[bold cyan]━━━ Lock Expiration ━━━[/]")
+
+                    if days_until_expiry < 0:
+                        console.print(
+                            "[bold red]⚠ EXPIRED[/] — Lock expired. USDC will be returned. No more emissions."
+                        )
+                    elif days_until_expiry <= 7:
+                        console.print(
+                            f"[bold red]⚠ Expiring in {days_until_expiry:.1f} days[/] — Extend lock to continue receiving emissions."
+                        )
+                    elif days_until_expiry <= 30:
+                        console.print(
+                            f"[bold yellow]⚠ Expiring in {days_until_expiry:.0f} days[/] — Consider extending your lock."
+                        )
+                    else:
+                        console.print(
+                            f"[bold green]✓ Valid for {days_until_expiry:.0f} days[/]"
+                        )
+            except Exception:
+                pass
+
+        # Concise reminder
+        console.print()
+        console.print("[bold cyan]━━━ Reminders ━━━[/]")
+        console.print("• Lock expiration: USDC returned automatically, emissions stop.")
+        console.print(
+            "• Extend lock: Use [bold]cartha extend-lock[/] to continue receiving emissions."
         )
 
     # Explicitly return to ensure clean exit
