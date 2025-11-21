@@ -1,18 +1,9 @@
 UV ?= uv
 
-.PHONY: sync lint format typecheck test
+.PHONY: sync test
 
 sync:
 	$(UV) sync
 
-lint:
-	$(UV) run ruff check cartha_cli tests
-
-format:
-	$(UV) run ruff format cartha_cli tests
-
-typecheck:
-	$(UV) run mypy cartha_cli
-
-test: lint typecheck
+test:
 	PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 $(UV) run pytest

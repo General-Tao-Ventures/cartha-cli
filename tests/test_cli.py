@@ -17,7 +17,9 @@ class _StubKeypair:
     def __init__(self, ss58_address: str | None = None):
         self.ss58_address = ss58_address
 
-    def verify(self, message: bytes, signature: bytes) -> bool:  # pragma: no cover - stub
+    def verify(
+        self, message: bytes, signature: bytes
+    ) -> bool:  # pragma: no cover - stub
         return True
 
 
@@ -101,9 +103,17 @@ def test_register_command_success(monkeypatch):
     def fake_issue(**kwargs):
         return {"pwd": "0x" + "11" * 32}
 
+    class DummyHotkey:
+        def __init__(self, ss58_address: str = "bt1abc"):
+            self.ss58_address = ss58_address
+
+        def sign(self, message: bytes) -> bytes:
+            # Return a fake signature
+            return b"\x00" * 64
+
     class DummyWallet:
         def __init__(self):
-            self.hotkey = type("Hotkey", (), {"ss58_address": "bt1abc"})()
+            self.hotkey = DummyHotkey("bt1abc")
             self.coldkeypub = type("Coldkey", (), {"ss58_address": "bt1cold"})()
             self.path = "~/.bittensor/wallets/"
 
@@ -118,10 +128,27 @@ def test_register_command_success(monkeypatch):
             return 10.9941
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
     monkeypatch.setattr("cartha_cli.main.register_pair_password", fake_issue)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", lambda *args, **kwargs: DummyWallet())
-    monkeypatch.setattr("cartha_cli.main.get_subtensor", lambda *args, **kwargs: DummySubtensor())
+
+    def fake_get_wallet(*args, **kwargs):
+        return DummyWallet()
+
+    def fake_get_subtensor(*args, **kwargs):
+        return DummySubtensor()
+
+    # Patch bt.wallet and bt.subtensor to return our dummies
+    # This is needed because get_wallet() calls bt.wallet() internally
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet())
+    monkeypatch.setattr(bt, "subtensor", lambda *args, **kwargs: DummySubtensor())
+
+    # Also patch the convenience functions
+    monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
+    monkeypatch.setattr("cartha_cli.main.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)  # Auto-confirm
 
     result = runner.invoke(
@@ -140,18 +167,31 @@ def test_register_command_success(monkeypatch):
     )
     assert result.exit_code == 0
     # Updated assertion to match new success message format
-    assert "Registered on netuid" in result.stdout or "Registration success" in result.stdout
+    assert (
+        "Registered on netuid" in result.stdout
+        or "Registration success" in result.stdout
+    )
     assert "UID" in result.stdout or "Registered UID: 10" in result.stdout
     assert "Pair password for bt1abc/10" in result.stdout
 
 
 def test_register_command_already(monkeypatch):
     def fake_register_hotkey(**kwargs):
-        return RegistrationResult(status="already", success=True, uid=7, hotkey="bt1abc")
+        return RegistrationResult(
+            status="already", success=True, uid=7, hotkey="bt1abc"
+        )
+
+    class DummyHotkey:
+        def __init__(self, ss58_address: str = "bt1abc"):
+            self.ss58_address = ss58_address
+
+        def sign(self, message: bytes) -> bytes:
+            # Return a fake signature
+            return b"\x00" * 64
 
     class DummyWallet:
         def __init__(self):
-            self.hotkey = type("Hotkey", (), {"ss58_address": "bt1abc"})()
+            self.hotkey = DummyHotkey("bt1abc")
             self.coldkeypub = type("Coldkey", (), {"ss58_address": "bt1cold"})()
             self.path = "~/.bittensor/wallets/"
 
@@ -163,8 +203,17 @@ def test_register_command_already(monkeypatch):
             return type("Neuron", (), {"is_null": False, "uid": 7})()
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", lambda *args, **kwargs: DummyWallet())
-    monkeypatch.setattr("cartha_cli.main.get_subtensor", lambda *args, **kwargs: DummySubtensor())
+
+    def fake_get_wallet(*args, **kwargs):
+        return DummyWallet()
+
+    def fake_get_subtensor(*args, **kwargs):
+        return DummySubtensor()
+
+    monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
+    monkeypatch.setattr("cartha_cli.main.get_subtensor", fake_get_subtensor)
 
     result = runner.invoke(
         app,
@@ -183,11 +232,21 @@ def test_register_command_already(monkeypatch):
 
 def test_register_command_failure(monkeypatch):
     def fake_register_hotkey(**kwargs):
-        return RegistrationResult(status="pow", success=False, uid=None, hotkey="bt1abc")
+        return RegistrationResult(
+            status="pow", success=False, uid=None, hotkey="bt1abc"
+        )
+
+    class DummyHotkey:
+        def __init__(self, ss58_address: str = "bt1abc"):
+            self.ss58_address = ss58_address
+
+        def sign(self, message: bytes) -> bytes:
+            # Return a fake signature
+            return b"\x00" * 64
 
     class DummyWallet:
         def __init__(self):
-            self.hotkey = type("Hotkey", (), {"ss58_address": "bt1abc"})()
+            self.hotkey = DummyHotkey("bt1abc")
             self.coldkeypub = type("Coldkey", (), {"ss58_address": "bt1cold"})()
             self.path = "~/.bittensor/wallets/"
 
@@ -202,8 +261,17 @@ def test_register_command_failure(monkeypatch):
             return 10.9941
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", lambda *args, **kwargs: DummyWallet())
-    monkeypatch.setattr("cartha_cli.main.get_subtensor", lambda *args, **kwargs: DummySubtensor())
+
+    def fake_get_wallet(*args, **kwargs):
+        return DummyWallet()
+
+    def fake_get_subtensor(*args, **kwargs):
+        return DummySubtensor()
+
+    monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
+    monkeypatch.setattr("cartha_cli.main.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)  # Auto-confirm
     result = runner.invoke(
         app,
@@ -234,8 +302,18 @@ def test_register_command_wallet_error(monkeypatch):
     # Mock both get_subtensor and get_wallet from the bt module (where they're imported from)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
-    # Also patch get_wallet where it's imported in main module
+    # Also patch get_wallet where it's imported in main module (critical!)
     monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
+    # Patch bt.wallet to also raise KeyFileError (in case get_wallet calls it internally)
+    import bittensor as bt
+
+    monkeypatch.setattr(
+        bt,
+        "wallet",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            _StubKeyFileError("missing keyfile")
+        ),
+    )
     # Patch bt.KeyFileError in main module to match our stub exception type
     # This ensures the exception handler can catch it properly
     monkeypatch.setattr("cartha_cli.main.bt.KeyFileError", _StubKeyFileError)
@@ -263,7 +341,21 @@ def test_register_command_trace_unexpected(monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
+    # Also patch bt.wallet and bt.subtensor to raise RuntimeError
+    import bittensor as bt
+
+    monkeypatch.setattr(
+        bt,
+        "wallet",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
 
     # default: error handled without traceback
     result = runner.invoke(
@@ -316,13 +408,36 @@ def test_pair_status_command(monkeypatch):
         def __init__(self, ss58: str) -> None:
             self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
 
-    monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+    # Patch bt.wallet and bt.subtensor for build_pair_auth_payload and load_wallet
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
     monkeypatch.setattr(
-        "cartha_cli.main._load_wallet",
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    # Patch build_pair_auth_payload in both pair and main modules
+    monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.main.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.pair.request_pair_status_or_password", fake_request)
+    monkeypatch.setattr("cartha_cli.main.request_pair_status_or_password", fake_request)
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
         lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
     )
-    monkeypatch.setattr("cartha_cli.main._ensure_pair_registered", lambda **kwargs: None)
+    monkeypatch.setattr("cartha_cli.pair.ensure_pair_registered", lambda **kwargs: None)
+    # Patch get_uid_from_hotkey to return the slot from the test
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
 
     result = runner.invoke(
         app,
@@ -364,13 +479,36 @@ def test_pair_status_command_json(monkeypatch):
         def __init__(self, ss58: str) -> None:
             self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
 
-    monkeypatch.setattr("cartha_cli.main._build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr("cartha_cli.main._request_pair_status_or_password", fake_request)
+    # Patch bt.wallet and bt.subtensor for build_pair_auth_payload and load_wallet
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
     monkeypatch.setattr(
-        "cartha_cli.main._load_wallet",
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    # Patch build_pair_auth_payload in both pair and main modules
+    monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.main.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.pair.request_pair_status_or_password", fake_request)
+    monkeypatch.setattr("cartha_cli.main.request_pair_status_or_password", fake_request)
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
         lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
     )
-    monkeypatch.setattr("cartha_cli.main._ensure_pair_registered", lambda **kwargs: None)
+    monkeypatch.setattr("cartha_cli.pair.ensure_pair_registered", lambda **kwargs: None)
+    # Patch get_uid_from_hotkey to return the slot from the test
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
 
     result = runner.invoke(
         app,
@@ -526,7 +664,10 @@ def test_prove_lock_with_local_signature_generation(monkeypatch):
 
     assert result.exit_code == 0
     assert "Lock proof submitted successfully." in result.stdout
-    assert "Signature generated" in result.stdout or "✓ Signature generated" in result.stdout
+    assert (
+        "Signature generated" in result.stdout
+        or "✓ Signature generated" in result.stdout
+    )
 
     payload = captured["payload"]
     assert payload["minerHotkey"] == "bt1xyz"
@@ -898,7 +1039,9 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
         assert "Lock proof submitted successfully." in result.stdout
 
         payload = captured["payload"]
-        assert payload["minerHotkey"] == "5H1GvKsWc2dJJbfmfRTk58anZXKgPfDA8umj9d95CiYia9cH"
+        assert (
+            payload["minerHotkey"] == "5H1GvKsWc2dJJbfmfRTk58anZXKgPfDA8umj9d95CiYia9cH"
+        )
         assert payload["slotUID"] == "9"
         assert payload["amount"] == 250000000
         assert payload["signature"] == "0x" + "88" * 65

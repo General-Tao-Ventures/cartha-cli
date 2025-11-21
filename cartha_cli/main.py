@@ -34,7 +34,21 @@ from .bt import (
     register_hotkey,
 )
 from .config import settings
+from .display import display_clock_and_countdown, get_clock_table
 from .eth712 import LockProofMessage
+from .pair import (
+    build_pair_auth_payload,
+    get_uid_from_hotkey,
+    request_pair_status_or_password,
+)
+from .utils import (
+    format_countdown,
+    format_timestamp,
+    get_current_epoch_start,
+    get_next_epoch_freeze_time,
+    normalize_hex,
+    usdc_to_base_units,
+)
 from .verifier import (
     VerifierError,
     fetch_pair_password,
@@ -42,9 +56,9 @@ from .verifier import (
     register_pair_password,
     submit_lock_proof,
 )
+from .wallet import load_wallet
 
-CHALLENGE_PREFIX = "cartha-pair-auth"
-CHALLENGE_TTL_SECONDS = 120
+from .wallet import CHALLENGE_PREFIX, CHALLENGE_TTL_SECONDS
 
 console = Console()
 
@@ -102,206 +116,7 @@ def _handle_unexpected_exception(context: str, exc: Exception) -> None:
     _exit_with_error(message)
 
 
-def _normalize_hex(value: str, prefix: str = "0x") -> str:
-    """Normalize hex string to ensure it has the correct prefix."""
-    value = value.strip()
-    if not value.startswith(prefix):
-        value = prefix + value
-    return value
-
-
-def _format_timestamp(ts: int | float | str | None) -> str:
-    """Format a timestamp showing both UTC and local time.
-
-    Args:
-        ts: Unix timestamp (seconds) as int, float, or string, or None for current time
-
-    Returns:
-        Formatted string like "2024-01-01 12:00:00 UTC (2024-01-01 07:00:00 EST)"
-    """
-    if ts is None:
-        ts = time.time()
-    elif isinstance(ts, str):
-        try:
-            ts = float(ts)
-        except ValueError:
-            return str(ts)  # Return as-is if not parseable
-
-    try:
-        ts_float = float(ts)
-        utc_dt = datetime.fromtimestamp(ts_float, tz=UTC)
-
-        # Get local timezone
-        try:
-            local_tz: ZoneInfo = ZoneInfo("local")
-        except Exception:
-            # Fallback if zoneinfo fails (shouldn't happen on Python 3.11+)
-            fallback_tz = datetime.now().astimezone().tzinfo
-            if fallback_tz is None:
-                # Ultimate fallback to UTC
-                local_tz = ZoneInfo("UTC")
-            else:
-                # Type ignore: mypy doesn't understand that ZoneInfo is compatible with tzinfo
-                local_tz = fallback_tz  # type: ignore[assignment]
-
-        local_dt = utc_dt.astimezone(local_tz)
-
-        # Format both times
-        utc_str = utc_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-        local_str = local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-        return f"{utc_str} ({local_str})"
-    except (ValueError, OSError, OverflowError):
-        # Fallback to simple ISO format if anything fails
-        try:
-            return datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
-        except Exception:
-            return str(ts)
-
-
-def _usdc_to_base_units(value: str) -> int:
-    try:
-        decimal_value = Decimal(value.strip())
-    except (InvalidOperation, AttributeError) as exc:
-        _exit_with_error("Lock amount must be numeric.")
-        raise typer.Exit() from exc  # pragma: no cover
-    if decimal_value <= 0:
-        _exit_with_error("Lock amount must be positive.")
-    quantized = decimal_value.quantize(Decimal("0.000001"), rounding=ROUND_DOWN)
-    return int(quantized * Decimal(10**6))
-
-
-def _get_current_epoch_start(reference: datetime | None = None) -> datetime:
-    """Calculate the start of the current epoch (Friday 00:00 UTC).
-
-    Args:
-        reference: Reference datetime (defaults to now in UTC)
-
-    Returns:
-        Datetime of the current epoch start (Friday 00:00 UTC)
-    """
-    reference = reference or datetime.now(tz=UTC)
-    weekday = reference.weekday()  # Monday=0, Friday=4
-    days_since_friday = (weekday - 4) % 7
-    candidate = datetime(
-        year=reference.year,
-        month=reference.month,
-        day=reference.day,
-        hour=0,
-        minute=0,
-        second=0,
-        microsecond=0,
-        tzinfo=UTC,
-    )
-    return candidate - timedelta(days=days_since_friday)
-
-
-def _get_next_epoch_freeze_time(reference: datetime | None = None) -> datetime:
-    """Calculate the next epoch freeze time (next Friday 00:00 UTC).
-
-    Args:
-        reference: Reference datetime (defaults to now in UTC)
-
-    Returns:
-        Datetime of the next epoch freeze (next Friday 00:00 UTC)
-    """
-    current_start = _get_current_epoch_start(reference)
-    # If we're exactly at epoch start, next is in 7 days
-    # Otherwise, next is current + 7 days
-    return current_start + timedelta(days=7)
-
-
-def _format_countdown(seconds: float) -> str:
-    """Format seconds into a human-readable countdown string.
-
-    Args:
-        seconds: Number of seconds remaining
-
-    Returns:
-        Formatted string like "2d 5h 30m 15s"
-    """
-    if seconds < 0:
-        return "0s"
-
-    days = int(seconds // 86400)
-    hours = int((seconds % 86400) // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-
-    parts = []
-    if days > 0:
-        parts.append(f"{days}d")
-    if hours > 0:
-        parts.append(f"{hours}h")
-    if minutes > 0:
-        parts.append(f"{minutes}m")
-    if secs > 0 or not parts:
-        parts.append(f"{secs}s")
-
-    return " ".join(parts)
-
-
-def _get_local_timezone() -> ZoneInfo:
-    """Get the local timezone, with fallbacks.
-
-    Returns:
-        ZoneInfo object for local timezone
-    """
-    try:
-        return ZoneInfo("local")
-    except Exception:
-        fallback_tz = datetime.now().astimezone().tzinfo
-        if fallback_tz is None:
-            return ZoneInfo("UTC")
-        return fallback_tz  # type: ignore[return-value]
-
-
-def _get_clock_table() -> Table:
-    """Create a table with current time (UTC and local) and countdown to next epoch freeze.
-
-    Returns:
-        Table with clock and countdown information
-    """
-    now_utc = datetime.now(tz=UTC)
-    local_tz = _get_local_timezone()
-    now_local = now_utc.astimezone(local_tz)
-
-    # Format current time
-    utc_str = now_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
-    local_str = now_local.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-    # Calculate next epoch freeze
-    next_freeze_utc = _get_next_epoch_freeze_time(now_utc)
-    next_freeze_local = next_freeze_utc.astimezone(local_tz)
-
-    # Calculate countdown
-    time_until_freeze = (next_freeze_utc - now_utc).total_seconds()
-    countdown_str = _format_countdown(time_until_freeze)
-
-    # Format next freeze times
-    next_freeze_utc_str = next_freeze_utc.strftime("%Y-%m-%d %H:%M:%S UTC")
-    next_freeze_local_str = next_freeze_local.strftime("%Y-%m-%d %H:%M:%S %Z")
-
-    # Create table
-    clock_table = Table(show_header=False, box=box.SIMPLE)
-    clock_table.add_column(style="cyan")
-    clock_table.add_column(style="yellow")
-
-    clock_table.add_row("Current time (UTC)", utc_str)
-    clock_table.add_row("Current time (Local)", local_str)
-    clock_table.add_row("", "")  # Spacer
-    clock_table.add_row("Next epoch freeze (UTC)", next_freeze_utc_str)
-    clock_table.add_row("Next epoch freeze (Local)", next_freeze_local_str)
-    clock_table.add_row("Countdown", countdown_str)
-
-    return clock_table
-
-
-def _display_clock_and_countdown() -> None:
-    """Display current time (UTC and local) and countdown to next epoch freeze."""
-    clock_table = _get_clock_table()
-    console.print(clock_table)
-    console.print()
+# Utility functions moved to utils.py, display.py, wallet.py, and pair.py modules
 
 
 def _print_root_help() -> None:
@@ -337,7 +152,7 @@ def _print_root_help() -> None:
     console.print()
 
     # Display clock and countdown in a separate table
-    clock_table = _get_clock_table()
+    clock_table = get_clock_table()
     console.print(clock_table)
     console.print()
 
@@ -398,223 +213,7 @@ def version() -> None:
         console.print("[bold white]cartha-cli[/] 0.0.0")
 
 
-def _get_uid_from_hotkey(
-    *,
-    network: str,
-    netuid: int,
-    hotkey: str,
-) -> int | None:
-    """Get the UID for a hotkey on the subnet.
-
-    Args:
-        network: Bittensor network name
-        netuid: Subnet netuid
-        hotkey: Hotkey SS58 address
-
-    Returns:
-        UID if registered, None if not registered or deregistered
-    """
-    subtensor = None
-
-    try:
-        subtensor = get_subtensor(network)
-
-        # Try to get UID directly - if successful, they're registered
-        # No need to check is_hotkey_registered() first (redundant)
-        # No need for metagraph() fallback (too slow, causes timeouts)
-        try:
-            uid = subtensor.get_uid_for_hotkey_on_subnet(
-                hotkey_ss58=hotkey, netuid=netuid
-            )
-            if uid is not None and uid >= 0:
-                return int(uid)
-        except AttributeError:
-            # Method doesn't exist in this bittensor version
-            # Return None rather than falling back to slow metagraph()
-            return None
-        except Exception:
-            # Any other error means not registered or network issue
-            return None
-
-        return None
-    except Exception as exc:
-        error_msg = str(exc)
-        if "nodename" in error_msg.lower() or "servname" in error_msg.lower():
-            console.print(
-                f"[bold red]Network error[/]: Unable to connect to Bittensor {network} network: {error_msg}"
-            )
-            console.print(
-                "[yellow]This might be a DNS/network connectivity issue. Please check your internet connection.[/]"
-            )
-            raise typer.Exit(code=1) from None
-        # Re-raise other exceptions as-is
-        raise
-    finally:
-        # Clean up connections
-        try:
-            if subtensor is not None:
-                if hasattr(subtensor, "close"):
-                    subtensor.close()
-                del subtensor
-        except Exception:
-            pass
-
-
-def _ensure_pair_registered(
-    *,
-    network: str,
-    netuid: int,
-    slot: str,
-    hotkey: str,
-) -> None:
-    subtensor = None
-    metagraph = None
-    try:
-        subtensor = get_subtensor(network)
-        metagraph = subtensor.metagraph(netuid)
-        slot_index = int(slot)
-        if slot_index < 0 or slot_index >= len(metagraph.hotkeys):
-            console.print(
-                f"[bold red]UID {slot} not found[/] in the metagraph (netuid {netuid})."
-            )
-            raise typer.Exit(code=1)
-        registered_hotkey = metagraph.hotkeys[slot_index]
-        if registered_hotkey != hotkey:
-            console.print(
-                f"[bold red]UID mismatch[/]: slot {slot} belongs to a different hotkey, not {hotkey}. Please verify your inputs."
-            )
-            raise typer.Exit(code=1)
-    except Exception as exc:
-        error_msg = str(exc)
-        if "nodename" in error_msg.lower() or "servname" in error_msg.lower():
-            console.print(
-                f"[bold red]Network error[/]: Unable to connect to Bittensor {network} network: {error_msg}"
-            )
-            console.print(
-                "[yellow]This might be a DNS/network connectivity issue. Please check your internet connection.[/]"
-            )
-            raise typer.Exit(code=1) from None
-        # Re-raise other exceptions as-is
-        raise
-    finally:
-        # Clean up connections to prevent hanging
-        # Bittensor subtensor objects maintain persistent connections that need explicit cleanup
-        try:
-            if metagraph is not None:
-                # Clean up metagraph reference first
-                del metagraph
-        except Exception:
-            pass
-        try:
-            if subtensor is not None:
-                # Try to close the subtensor connection if the method exists
-                if hasattr(subtensor, "close"):
-                    subtensor.close()
-                # Force cleanup by deleting reference to release connections
-                del subtensor
-        except Exception:
-            # Ignore cleanup errors - connections will be garbage collected eventually
-            pass
-
-
-def _load_wallet(
-    wallet_name: str, wallet_hotkey: str, expected_hotkey: str | None
-) -> bt.wallet:
-    try:
-        wallet = get_wallet(wallet_name, wallet_hotkey)
-    except bt.KeyFileError as exc:
-        _handle_wallet_exception(
-            wallet_name=wallet_name, wallet_hotkey=wallet_hotkey, exc=exc
-        )
-    except Exception as exc:  # pragma: no cover - defensive
-        _handle_unexpected_exception(
-            f"Failed to load wallet '{wallet_name}/{wallet_hotkey}'", exc
-        )
-
-    if expected_hotkey and wallet.hotkey.ss58_address != expected_hotkey:
-        _exit_with_error(
-            "Hotkey mismatch: loaded wallet hotkey does not match the supplied address."
-        )
-
-    return wallet
-
-
-def _build_pair_auth_payload(
-    *,
-    network: str,
-    netuid: int,
-    slot: str,
-    hotkey: str,
-    wallet_name: str,
-    wallet_hotkey: str,
-    skip_metagraph_check: bool = False,
-) -> dict[str, Any]:
-    wallet = _load_wallet(wallet_name, wallet_hotkey, hotkey)
-    if not skip_metagraph_check:
-        _ensure_pair_registered(
-            network=network, netuid=netuid, slot=slot, hotkey=hotkey
-        )
-
-    timestamp = int(time.time())
-    message = (
-        f"{CHALLENGE_PREFIX}|network:{network}|netuid:{netuid}|slot:{slot}|"
-        f"hotkey:{hotkey}|ts:{timestamp}"
-    )
-    message_bytes = message.encode("utf-8")
-    signature_bytes = wallet.hotkey.sign(message_bytes)
-
-    verifier_keypair = bt.Keypair(ss58_address=hotkey)
-    if not verifier_keypair.verify(message_bytes, signature_bytes):
-        console.print("[bold red]Unable to verify the ownership signature locally.[/]")
-        raise typer.Exit(code=1)
-
-    expires_at = timestamp + CHALLENGE_TTL_SECONDS
-    expiry_time = _format_timestamp(expires_at)
-    console.print(
-        "[bold green]Ownership challenge signed[/] "
-        f"(expires in {CHALLENGE_TTL_SECONDS}s at {expiry_time})."
-    )
-
-    return {
-        "message": message,
-        "signature": "0x" + signature_bytes.hex(),
-        "expires_at": expires_at,
-    }
-
-
-def _request_pair_status_or_password(
-    *,
-    mode: str,
-    hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    auth_payload: dict[str, Any],
-) -> dict[str, Any]:
-    request_kwargs = {
-        "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": auth_payload["message"],
-        "signature": auth_payload["signature"],
-    }
-    try:
-        if mode == "status":
-            return fetch_pair_status(**request_kwargs)
-        if mode == "password":
-            return fetch_pair_password(**request_kwargs)
-    except VerifierError as exc:
-        # Check if it's a timeout error
-        error_msg = str(exc)
-        if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
-            console.print(f"[bold red]Request timed out[/]")
-            # Print the full error message (may be multi-line)
-            console.print(f"[yellow]{error_msg}[/]")
-        else:
-            console.print(f"[bold red]Verifier request failed[/]: {exc}")
-        raise typer.Exit(code=1) from exc
-    raise RuntimeError(f"Unknown mode {mode}")  # pragma: no cover
+# Pair and wallet functions moved to pair.py and wallet.py modules
 
 
 @app.command("register")
@@ -729,7 +328,7 @@ def register(
 
     # Display clock and countdown
     console.print()
-    _display_clock_and_countdown()
+    display_clock_and_countdown()
 
     # Confirmation prompt
     if not typer.confirm("\nDo you want to continue?", default=False):
@@ -791,7 +390,7 @@ def register(
     if result.uid is not None:
         slot_uid = str(result.uid)
         try:
-            auth_payload = _build_pair_auth_payload(
+            auth_payload = build_pair_auth_payload(
                 network=network,
                 netuid=netuid,
                 slot=slot_uid,
@@ -895,7 +494,7 @@ def pair_status(
     """Show the verifier state for a miner pair."""
     try:
         console.print("[bold cyan]Loading wallet...[/]")
-        wallet = _load_wallet(wallet_name, wallet_hotkey, None)
+        wallet = load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
 
         # Fetch UID automatically by default, prompt if disabled
@@ -904,7 +503,7 @@ def pair_status(
                 # Auto-fetch enabled (default) - try to fetch from network
                 console.print("[bold cyan]Fetching UID from subnet...[/]")
                 try:
-                    slot = _get_uid_from_hotkey(
+                    slot = get_uid_from_hotkey(
                         network=network, netuid=netuid, hotkey=hotkey
                     )
                     if slot is None:
@@ -956,7 +555,7 @@ def pair_status(
         # )
 
         console.print("[bold cyan]Signing hotkey ownership challenge...[/]")
-        auth_payload = _build_pair_auth_payload(
+        auth_payload = build_pair_auth_payload(
             network=network,
             netuid=netuid,
             slot=slot_id,
@@ -968,7 +567,7 @@ def pair_status(
             "[bold cyan]Verifying ownership with Cartha verifier...[/]",
             spinner="dots",
         ):
-            status = _request_pair_status_or_password(
+            status = request_pair_status_or_password(
                 mode="status",
                 hotkey=hotkey,
                 slot=slot_id,
@@ -1087,7 +686,7 @@ def pair_status(
                 "[bold cyan]Refreshing verifier status...[/]",
                 spinner="dots",
             ):
-                status = _request_pair_status_or_password(
+                status = request_pair_status_or_password(
                     mode="status",
                     hotkey=hotkey,
                     slot=slot_id,
@@ -1122,7 +721,7 @@ def pair_status(
         return
 
     # Display clock and countdown
-    _display_clock_and_countdown()
+    display_clock_and_countdown()
 
     table = Table(title="Pair Status", show_header=False)
     table.add_row("Hotkey", hotkey)
@@ -1147,13 +746,13 @@ def pair_status(
                 isinstance(issued_at, str) and issued_at.isdigit()
             ):
                 # Numeric timestamp
-                formatted_time = _format_timestamp(issued_at)
+                formatted_time = format_timestamp(issued_at)
             elif isinstance(issued_at, str):
                 # Try parsing as ISO format datetime string
                 try:
                     dt = datetime.fromisoformat(issued_at.replace("Z", "+00:00"))
                     timestamp = dt.timestamp()
-                    formatted_time = _format_timestamp(timestamp)
+                    formatted_time = format_timestamp(timestamp)
                 except (ValueError, AttributeError):
                     # If parsing fails, display as-is
                     formatted_time = issued_at
@@ -1261,19 +860,19 @@ def _generate_eip712_signature(
         )
 
     # Normalize private key
-    private_key_normalized = _normalize_hex(private_key)
+    private_key_normalized = normalize_hex(private_key)
 
     # Derive EVM address from private key
     account = Account.from_key(private_key_normalized)
     miner_evm_address = Web3.to_checksum_address(account.address)
 
     # Normalize password
-    password_normalized = _normalize_hex(password)
+    password_normalized = normalize_hex(password)
     if len(password_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
         _exit_with_error("Password must be 32 bytes (0x + 64 hex characters)")
 
     # Normalize tx hash
-    tx_hash_normalized = _normalize_hex(tx_hash.lower())
+    tx_hash_normalized = normalize_hex(tx_hash.lower())
     if len(tx_hash_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
         _exit_with_error("Transaction hash must be 32 bytes (0x + 64 hex characters)")
 
@@ -1466,7 +1065,7 @@ def prove_lock(
                 )
                 raise typer.Exit(code=1)
             if tx is not None:
-                tx_normalized = _normalize_hex(tx)
+                tx_normalized = normalize_hex(tx)
                 if len(tx_normalized) != 66:
                     console.print(
                         "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
@@ -1486,10 +1085,10 @@ def prove_lock(
                         amount_base_units = amount_as_int
                     else:
                         # Treat as normalized USDC
-                        amount_base_units = _usdc_to_base_units(amount)
+                        amount_base_units = usdc_to_base_units(amount)
                 except (ValueError, InvalidOperation):
                     # If not a valid number, try treating as normalized USDC
-                    amount_base_units = _usdc_to_base_units(amount)
+                    amount_base_units = usdc_to_base_units(amount)
             hotkey = hotkey if hotkey is not None else payload_data.get("hotkey")
             if hotkey is not None:
                 if (
@@ -1531,7 +1130,7 @@ def prove_lock(
                 password if password is not None else payload_data.get("password")
             )
             if password is not None:
-                password_normalized = _normalize_hex(password)
+                password_normalized = normalize_hex(password)
                 if len(password_normalized) != 66:
                     console.print(
                         "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
@@ -1543,7 +1142,7 @@ def prove_lock(
                 signature if signature is not None else payload_data.get("signature")
             )
             if signature is not None:
-                signature_normalized = _normalize_hex(signature)
+                signature_normalized = normalize_hex(signature)
                 if len(signature_normalized) != 132:
                     console.print(
                         "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
@@ -1597,21 +1196,21 @@ def prove_lock(
         # Normalize hex fields if provided via CLI args (not from payload file)
         if payload_file is None:
             if signature is not None:
-                signature = _normalize_hex(signature)
+                signature = normalize_hex(signature)
                 if len(signature) != 132:  # 0x + 130 hex chars = 65 bytes
                     console.print(
                         "[bold red]Error:[/] Signature must be 65 bytes (0x + 130 hex characters)"
                     )
                     raise typer.Exit(code=1)
             if password is not None:
-                password = _normalize_hex(password)
+                password = normalize_hex(password)
                 if len(password) != 66:  # 0x + 64 hex chars = 32 bytes
                     console.print(
                         "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
                     )
                     raise typer.Exit(code=1)
             if tx is not None:
-                tx = _normalize_hex(tx)
+                tx = normalize_hex(tx)
                 if len(tx) != 66:  # 0x + 64 hex chars = 32 bytes
                     console.print(
                         "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
@@ -1655,7 +1254,7 @@ def prove_lock(
                     signature = typer.prompt(
                         "EIP-712 signature (0x...)", show_default=False
                     )
-                    signature_normalized = _normalize_hex(signature)
+                    signature_normalized = normalize_hex(signature)
                     # EIP-712 signature is 65 bytes = 0x + 130 hex chars
                     if len(signature_normalized) == 132:
                         signature = signature_normalized
@@ -1733,7 +1332,7 @@ def prove_lock(
 
                         # Normalize and validate private key
                         try:
-                            private_key_normalized = _normalize_hex(private_key)
+                            private_key_normalized = normalize_hex(private_key)
                             if (
                                 len(private_key_normalized) != 66
                             ):  # 0x + 64 hex chars = 32 bytes
@@ -1838,7 +1437,7 @@ def prove_lock(
         if tx is None:
             while True:
                 tx = typer.prompt("Transaction hash", show_default=False)
-                tx_normalized = _normalize_hex(tx)
+                tx_normalized = normalize_hex(tx)
                 if len(tx_normalized) == 66:  # 0x + 64 hex chars = 32 bytes
                     tx = tx_normalized
                     break
@@ -1852,7 +1451,7 @@ def prove_lock(
                     normalized_input = typer.prompt(
                         "Lock amount in USDC (e.g. 250.5)", show_default=False
                     )
-                    amount_base_units = _usdc_to_base_units(normalized_input)
+                    amount_base_units = usdc_to_base_units(normalized_input)
                     if amount_base_units <= 0:
                         console.print("[bold red]Error:[/] Amount must be positive")
                         continue
@@ -1870,10 +1469,10 @@ def prove_lock(
                         amount_base_units = amount_as_int
                     else:
                         # Treat as normalized USDC
-                        amount_base_units = _usdc_to_base_units(amount)
+                        amount_base_units = usdc_to_base_units(amount)
                 except (ValueError, InvalidOperation):
                     # If not a valid number, try treating as normalized USDC
-                    amount_base_units = _usdc_to_base_units(amount)
+                    amount_base_units = usdc_to_base_units(amount)
 
         if hotkey is None:
             while True:
@@ -1897,7 +1496,7 @@ def prove_lock(
 
                 console.print("[bold cyan]Fetching UID from subnet...[/]")
                 try:
-                    slot = _get_uid_from_hotkey(
+                    slot = get_uid_from_hotkey(
                         network=settings.network, netuid=settings.netuid, hotkey=hotkey
                     )
                     if slot is None:
@@ -1946,7 +1545,7 @@ def prove_lock(
                 password = typer.prompt(
                     "Pair password (0x...)", hide_input=True, show_default=False
                 )
-                password_normalized = _normalize_hex(password)
+                password_normalized = normalize_hex(password)
                 if len(password_normalized) == 66:  # 0x + 64 hex chars = 32 bytes
                     password = password_normalized
                     break
@@ -2161,7 +1760,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
                     signature = typer.prompt(
                         "Paste your EIP-712 signature (0x...)", show_default=False
                     )
-                    signature_normalized = _normalize_hex(signature)
+                    signature_normalized = normalize_hex(signature)
                     # EIP-712 signature is 65 bytes = 0x + 130 hex chars
                     if len(signature_normalized) == 132:
                         signature = signature_normalized
@@ -2239,7 +1838,7 @@ Use the JSON from {json_filename.name} with any EIP-712 compatible signing tool.
             console.print()
 
             # Display clock and countdown
-            _display_clock_and_countdown()
+            display_clock_and_countdown()
         else:
             # In JSON mode, show a simple summary before confirmation
             console.print(
