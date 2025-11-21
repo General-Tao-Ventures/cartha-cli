@@ -305,12 +305,12 @@ def pair_status(
             # Format amount nicely without scientific notation
             amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
             table.add_row("Verified lock amount", f"{amount_str} USDC")
-        
+
         # Show lock days and expiration
         lock_days = sanitized.get("lock_days")
         if lock_days is not None:
             table.add_row("Lock days", str(lock_days))
-        
+
         expires_at = sanitized.get("expires_at")
         if expires_at is not None:
             # Format expiration datetime (date + time for urgency)
@@ -354,72 +354,32 @@ def pair_status(
     if password:
         table.add_row("Pair password", password)
     console.print(table)
-    
+
     # Show warnings and reminders
     if password:
         console.print()
         console.print(
-            "[bold yellow]🔐 Keep your password safe[/] — This password is for your eyes only. "
-            "Exposure might allow others to steal your locked USDC rewards."
+            "[bold yellow]🔐 Keep your password safe[/] — Exposure might allow others to steal your locked USDC rewards."
         )
-    
+
     # Show detailed status information for verified/active pairs
     if state in ("verified", "active"):
         in_upcoming_epoch = sanitized.get("in_upcoming_epoch")
-        expires_during_upcoming_epoch = sanitized.get("expires_during_upcoming_epoch")
         expires_at = sanitized.get("expires_at")
-        
+
         console.print()
         console.print("[bold cyan]━━━ Epoch Status ━━━[/]")
-        
+
         # Upcoming epoch inclusion status
         if in_upcoming_epoch:
             console.print(
-                "[bold green]✓ Included in upcoming epoch[/] — You are included in the next weekly frozen epoch list "
-                "and will receive rewards for the upcoming epoch."
+                "[bold green]✓ Included in upcoming epoch[/] — You will receive rewards for the next epoch."
             )
         elif in_upcoming_epoch is False:
-            console.print()
             console.print(
-                "[bold yellow]⚠ Not included in upcoming epoch[/] — You are NOT included in the next weekly frozen epoch list."
+                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha extend-lock[/] or [bold]cartha prove-lock[/] to be included."
             )
-            console.print()
-            console.print(
-                "[dim]Possible reasons:[/]"
-            )
-            console.print(
-                "[dim]  • Your lock expires before or during the upcoming epoch week[/]"
-            )
-            console.print(
-                "[dim]  • You were deregistered from the subnet[/]"
-            )
-            console.print(
-                "[dim]  • Your lock proof was not submitted for the upcoming epoch[/]"
-            )
-            console.print()
-            console.print(
-                "[bold cyan]To be included:[/] Use [bold]cartha extend-lock[/] to extend your lock period, "
-                "or use [bold]cartha prove-lock[/] to submit a new lock proof with sufficient lock days."
-            )
-        
-        # Mid-epoch expiration warning
-        if expires_during_upcoming_epoch:
-            console.print()
-            console.print(
-                "[bold red]⚠ CRITICAL WARNING[/] — Your lock expires in the middle of the upcoming epoch week!"
-            )
-            console.print()
-            console.print(
-                "[bold red]Your expiry date falls on Sat/Sun/Mon/Tue/Wed of the upcoming epoch.[/] "
-                "This means your lock will expire before the epoch ends, which prevents you from "
-                "being included in the upcoming epoch reward distribution."
-            )
-            console.print()
-            console.print(
-                "[bold cyan]Action required:[/] You must [bold]extend your lock[/] or [bold]prove lock again[/] "
-                "with a new lock days amount that covers the full upcoming epoch week to be included."
-            )
-        
+
         # Expiration date information and warnings
         if expires_at:
             try:
@@ -430,55 +390,40 @@ def pair_status(
                     exp_dt = expires_at
                 else:
                     exp_dt = None
-                
+
                 if exp_dt:
                     now = datetime.now(UTC)
                     time_until_expiry = (exp_dt - now).total_seconds()
                     days_until_expiry = time_until_expiry / 86400
-                    
+
                     console.print()
                     console.print("[bold cyan]━━━ Lock Expiration ━━━[/]")
-                    
+
                     if days_until_expiry < 0:
                         console.print(
-                            "[bold red]⚠ EXPIRED[/] — Your lock has already expired! "
-                            "You will receive your USDC back and will not receive any more emissions."
+                            "[bold red]⚠ EXPIRED[/] — Lock expired. USDC will be returned. No more emissions."
                         )
                     elif days_until_expiry <= 7:
                         console.print(
-                            f"[bold red]⚠ Expiring soon[/] — Your lock expires in {days_until_expiry:.1f} days. "
-                            "Consider extending your lock to continue receiving emissions."
+                            f"[bold red]⚠ Expiring in {days_until_expiry:.1f} days[/] — Extend lock to continue receiving emissions."
                         )
                     elif days_until_expiry <= 30:
                         console.print(
-                            f"[bold yellow]⚠ Expiring in {days_until_expiry:.1f} days[/] — "
-                            "Your lock will expire soon. Consider extending your lock to avoid interruption."
+                            f"[bold yellow]⚠ Expiring in {days_until_expiry:.0f} days[/] — Consider extending your lock."
                         )
                     else:
                         console.print(
-                            f"[bold green]✓ Lock valid[/] — Your lock expires in {days_until_expiry:.0f} days."
+                            f"[bold green]✓ Valid for {days_until_expiry:.0f} days[/]"
                         )
             except Exception:
                 pass
-        
-        # General expiration reminder
+
+        # Concise reminder
         console.print()
-        console.print("[bold cyan]━━━ Important Reminders ━━━[/]")
+        console.print("[bold cyan]━━━ Reminders ━━━[/]")
+        console.print("• Lock expiration: USDC returned automatically, emissions stop.")
         console.print(
-            "[bold yellow]• Lock Expiration:[/] When your lock expires, you will automatically receive "
-            "all your USDC back to the EVM address you used to lock funds with."
-        )
-        console.print(
-            "[bold yellow]• Emissions:[/] Once your lock expires, you will NOT be able to receive "
-            "any more emissions, even if you are still registered on the subnet."
-        )
-        console.print(
-            "[bold yellow]• Extend Lock:[/] Use [bold]cartha extend-lock[/] to extend your lock period "
-            "without needing to submit a new lock proof."
-        )
-        console.print(
-            "[bold yellow]• Prove Lock Again:[/] Use [bold]cartha prove-lock[/] to submit a new lock proof "
-            "if you want to change your lock amount or lock period."
+            "• Extend lock: Use [bold]cartha extend-lock[/] to continue receiving emissions."
         )
 
     # Explicitly return to ensure clean exit
