@@ -63,7 +63,23 @@ def pair_status(
         False, "--json", help="Emit the raw JSON response."
     ),
 ) -> None:
-    """Show the verifier state for a miner pair."""
+    """Show the verifier state for a miner pair.
+    
+    State Legend:
+    ════════════════════════════════════════════════════════════════
+    
+    1. active   - In current frozen epoch, earning rewards
+    
+    2. verified - Has lock proof, not in current active epoch
+    
+    3. pending  - Registered, no lock proof submitted yet
+    
+    4. revoked  - Revoked (deregistered or evicted)
+    
+    5. unknown  - No pair record found
+    
+    ════════════════════════════════════════════════════════════════
+    """
     try:
         console.print("[bold cyan]Loading wallet...[/]")
         wallet = load_wallet(wallet_name, wallet_hotkey, None)
