@@ -127,9 +127,9 @@ def test_register_command_success(monkeypatch):
         def get_balance(self, address):
             return 10.9941
 
-    monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
-    monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr("cartha_cli.main.register_pair_password", fake_issue)
+    monkeypatch.setattr("cartha_cli.commands.register.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.commands.register.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.commands.register.register_pair_password", fake_issue)
 
     def fake_get_wallet(*args, **kwargs):
         return DummyWallet()
@@ -145,10 +145,10 @@ def test_register_command_success(monkeypatch):
     monkeypatch.setattr(bt, "subtensor", lambda *args, **kwargs: DummySubtensor())
 
     # Also patch the convenience functions
+    monkeypatch.setattr("cartha_cli.commands.register.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.commands.register.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
-    monkeypatch.setattr("cartha_cli.main.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)  # Auto-confirm
 
     result = runner.invoke(
@@ -202,7 +202,8 @@ def test_register_command_already(monkeypatch):
         def get_neuron_for_pubkey_and_subnet(self, hotkey, netuid):
             return type("Neuron", (), {"is_null": False, "uid": 7})()
 
-    monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.commands.register.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.bt.register_hotkey", fake_register_hotkey)
 
     def fake_get_wallet(*args, **kwargs):
         return DummyWallet()
@@ -210,10 +211,10 @@ def test_register_command_already(monkeypatch):
     def fake_get_subtensor(*args, **kwargs):
         return DummySubtensor()
 
+    monkeypatch.setattr("cartha_cli.commands.register.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.commands.register.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
-    monkeypatch.setattr("cartha_cli.main.get_subtensor", fake_get_subtensor)
 
     result = runner.invoke(
         app,
@@ -260,7 +261,8 @@ def test_register_command_failure(monkeypatch):
         def get_balance(self, address):
             return 10.9941
 
-    monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.commands.register.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.bt.register_hotkey", fake_register_hotkey)
 
     def fake_get_wallet(*args, **kwargs):
         return DummyWallet()
@@ -268,10 +270,10 @@ def test_register_command_failure(monkeypatch):
     def fake_get_subtensor(*args, **kwargs):
         return DummySubtensor()
 
+    monkeypatch.setattr("cartha_cli.commands.register.get_wallet", fake_get_wallet)
+    monkeypatch.setattr("cartha_cli.commands.register.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
-    monkeypatch.setattr("cartha_cli.main.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)  # Auto-confirm
     result = runner.invoke(
         app,
@@ -300,10 +302,10 @@ def test_register_command_wallet_error(monkeypatch):
         raise _StubKeyFileError("missing keyfile")
 
     # Mock both get_subtensor and get_wallet from the bt module (where they're imported from)
+    monkeypatch.setattr("cartha_cli.commands.register.get_subtensor", fake_get_subtensor)
+    monkeypatch.setattr("cartha_cli.commands.register.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
-    # Also patch get_wallet where it's imported in main module (critical!)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
     # Patch bt.wallet to also raise KeyFileError (in case get_wallet calls it internally)
     import bittensor as bt
 
@@ -314,9 +316,11 @@ def test_register_command_wallet_error(monkeypatch):
             _StubKeyFileError("missing keyfile")
         ),
     )
-    # Patch bt.KeyFileError in main module to match our stub exception type
+    # Patch bt.KeyFileError to match our stub exception type
     # This ensures the exception handler can catch it properly
-    monkeypatch.setattr("cartha_cli.main.bt.KeyFileError", _StubKeyFileError)
+    import cartha_cli.commands.register as register_module
+    # Patch KeyFileError in the bt module that register imports
+    monkeypatch.setattr(register_module.bt, "KeyFileError", _StubKeyFileError)
 
     result = runner.invoke(
         app,
@@ -340,9 +344,9 @@ def test_register_command_trace_unexpected(monkeypatch):
     def fake_get_wallet(*args, **kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr("cartha_cli.main.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.commands.register.register_hotkey", fake_register_hotkey)
+    monkeypatch.setattr("cartha_cli.bt.register_hotkey", fake_register_hotkey)
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
-    monkeypatch.setattr("cartha_cli.main.get_wallet", fake_get_wallet)
     # Also patch bt.wallet and bt.subtensor to raise RuntimeError
     import bittensor as bt
 
@@ -427,10 +431,10 @@ def test_pair_status_command(monkeypatch):
     )
 
     # Patch build_pair_auth_payload in both pair and main modules
+    monkeypatch.setattr("cartha_cli.commands.pair_status.build_pair_auth_payload", fake_auth_payload)
     monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr("cartha_cli.main.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.commands.pair_status.request_pair_status_or_password", fake_request)
     monkeypatch.setattr("cartha_cli.pair.request_pair_status_or_password", fake_request)
-    monkeypatch.setattr("cartha_cli.main.request_pair_status_or_password", fake_request)
     monkeypatch.setattr(
         "cartha_cli.wallet.load_wallet",
         lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
@@ -498,10 +502,10 @@ def test_pair_status_command_json(monkeypatch):
     )
 
     # Patch build_pair_auth_payload in both pair and main modules
+    monkeypatch.setattr("cartha_cli.commands.pair_status.build_pair_auth_payload", fake_auth_payload)
     monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr("cartha_cli.main.build_pair_auth_payload", fake_auth_payload)
+    monkeypatch.setattr("cartha_cli.commands.pair_status.request_pair_status_or_password", fake_request)
     monkeypatch.setattr("cartha_cli.pair.request_pair_status_or_password", fake_request)
-    monkeypatch.setattr("cartha_cli.main.request_pair_status_or_password", fake_request)
     monkeypatch.setattr(
         "cartha_cli.wallet.load_wallet",
         lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
@@ -553,7 +557,8 @@ def test_prove_lock_command_success(monkeypatch):
             return "30"  # Return default lock_days
         return "default"
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
     monkeypatch.setattr("typer.prompt", fake_prompt)
 
@@ -615,7 +620,8 @@ def test_prove_lock_with_local_signature_generation(monkeypatch):
 
     # Mock environment variable
     monkeypatch.setenv("CARTHA_EVM_PK", test_private_key)
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock prompts: user says they don't have signature, wants to sign locally
     prompt_responses = iter(
@@ -689,7 +695,8 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
         captured["payload"] = payload
         return {"ok": True}
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock prompts: user says they have signature from external wallet
     prompt_responses = iter(
@@ -769,7 +776,8 @@ def test_prove_lock_local_signature_without_env_var(monkeypatch):
 
     # Ensure env var is not set
     monkeypatch.delenv("CARTHA_EVM_PK", raising=False)
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock prompts
     prompt_responses = iter(
@@ -845,7 +853,8 @@ def test_prove_lock_signature_evm_address_mismatch(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setenv("CARTHA_EVM_PK", test_private_key)
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock prompts: user provides different EVM address
     prompt_responses = iter(
@@ -896,7 +905,8 @@ def test_prove_lock_external_signing_flow(monkeypatch):
         captured["payload"] = payload
         return {"ok": True}
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock prompts: user chooses external signing
     prompt_responses = iter(
@@ -957,10 +967,10 @@ def test_prove_lock_external_signing_flow(monkeypatch):
 
 
 def test_generate_eip712_signature_helper(monkeypatch):
-    """Test the _generate_eip712_signature helper function directly."""
+    """Test the generate_eip712_signature helper function directly."""
     from eth_account import Account
 
-    from cartha_cli.main import _generate_eip712_signature
+    from cartha_cli.commands.prove_lock_helpers import generate_eip712_signature
 
     # Generate test account
     test_account = Account.create()
@@ -968,7 +978,7 @@ def test_generate_eip712_signature_helper(monkeypatch):
     test_address = test_account.address
 
     # Test signature generation
-    signature, derived_address = _generate_eip712_signature(
+    signature, derived_address = generate_eip712_signature(
         chain_id=8453,
         vault_address="0x000000000000000000000000000000000000dEaD",
         miner_hotkey="bt1test",
@@ -997,7 +1007,8 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
         captured["payload"] = payload
         return {"ok": True}
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock confirmation prompt
     def fake_confirm(*args, **kwargs):
@@ -1063,7 +1074,8 @@ def test_prove_lock_with_lock_days_cli(monkeypatch):
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     result = runner.invoke(
@@ -1127,7 +1139,8 @@ def test_prove_lock_lock_days_validation(monkeypatch):
         captured["payload"] = payload
         return {"ok": True}
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     result = runner.invoke(
         app,
@@ -1171,7 +1184,8 @@ def test_prove_lock_payload_file_with_lock_days(monkeypatch):
         captured["payload"] = payload
         return {"ok": True}
 
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
@@ -1280,7 +1294,8 @@ def test_prove_lock_lock_days_in_eip712_signature(monkeypatch):
         return {"ok": True}
 
     monkeypatch.setenv("CARTHA_EVM_PK", test_private_key)
-    monkeypatch.setattr("cartha_cli.main.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     prompt_responses = iter(
         [
