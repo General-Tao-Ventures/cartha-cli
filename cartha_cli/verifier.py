@@ -193,15 +193,15 @@ def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
 def extend_lock(
     auth_payload: dict[str, Any],
     lock_days: int,
-    lock_proof_signature: str,
-    timestamp: int,
 ) -> dict[str, Any]:
-    """Extend lock period by updating lock_days for existing lock proof."""
+    """Extend lock period by updating lock_days for existing lock proof.
+    
+    Simplified to only require Bittensor signature for hotkey ownership.
+    All lock proof details are retrieved from the database.
+    """
     payload = {
         **auth_payload,
         "lockDays": lock_days,
-        "lockProofSignature": lock_proof_signature,
-        "timestamp": timestamp,
     }
     return _request(
         "POST",
