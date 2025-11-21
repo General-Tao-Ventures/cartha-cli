@@ -190,8 +190,29 @@ def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def extend_lock(
+    auth_payload: dict[str, Any],
+    lock_days: int,
+    lock_proof_signature: str,
+    timestamp: int,
+) -> dict[str, Any]:
+    """Extend lock period by updating lock_days for existing lock proof."""
+    payload = {
+        **auth_payload,
+        "lockDays": lock_days,
+        "lockProofSignature": lock_proof_signature,
+        "timestamp": timestamp,
+    }
+    return _request(
+        "POST",
+        "/v1/pair/extend-lock",
+        json_data=payload,
+    )
+
+
 __all__ = [
     "VerifierError",
+    "extend_lock",
     "fetch_pair_status",
     "fetch_pair_password",
     "register_pair_password",

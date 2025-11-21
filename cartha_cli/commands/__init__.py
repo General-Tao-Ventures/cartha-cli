@@ -2,6 +2,7 @@
 
 from . import (
     claim_deposit,
+    extend_lock,
     pair_status,
     prove_lock,
     register,
@@ -10,6 +11,7 @@ from . import (
 
 __all__ = [
     "claim_deposit",
+    "extend_lock",
     "pair_status",
     "prove_lock",
     "register",

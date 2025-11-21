@@ -6,6 +6,7 @@ import typer
 
 from .commands import (
     claim_deposit,
+    extend_lock,
     pair_status,
     prove_lock,
     register,
@@ -61,6 +62,7 @@ app.command("version")(version.version_command)
 app.command("register")(register.register)
 pair_app.command("status")(pair_status.pair_status)
 app.command("prove-lock")(prove_lock.prove_lock)
+app.command("extend-lock")(extend_lock.extend_lock)
 app.command("claim-deposit")(claim_deposit.claim_deposit)
 
 
