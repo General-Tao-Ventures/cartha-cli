@@ -8,17 +8,17 @@ def main() -> None:  # pragma: no cover
 
     if not argv:
         sys.argv = [sys.argv[0]]
-        from .main import _print_root_help
+        from .commands.help import print_root_help
 
-        _print_root_help()
+        print_root_help()
         raise SystemExit(0)
 
     if argv[0] in {"-h", "--help"}:
         original = sys.argv[:]
         sys.argv = [sys.argv[0]]
-        from .main import _print_root_help
+        from .commands.help import print_root_help
 
-        _print_root_help()
+        print_root_help()
         sys.argv = original
         raise SystemExit(0)
 
