@@ -191,7 +191,13 @@ def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def extend_lock(
-    auth_payload: dict[str, Any],
+    *,
+    hotkey: str,
+    slot: str,
+    network: str,
+    netuid: int,
+    message: str,
+    signature: str,
     lock_days: int,
 ) -> dict[str, Any]:
     """Extend lock period by updating lock_days for existing lock proof.
@@ -200,7 +206,12 @@ def extend_lock(
     All lock proof details are retrieved from the database.
     """
     payload = {
-        **auth_payload,
+        "hotkey": hotkey,
+        "slot": slot,
+        "network": network,
+        "netuid": netuid,
+        "message": message,
+        "signature": signature,
         "lockDays": lock_days,
     }
     return _request(

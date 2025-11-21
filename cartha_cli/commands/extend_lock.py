@@ -244,7 +244,12 @@ def extend_lock(
         # Submit using the simplified extend-lock endpoint
         try:
             response = verifier_extend_lock(
-                auth_payload=auth_payload,
+                hotkey=hotkey,
+                slot=str(slot),
+                network=network,
+                netuid=netuid,
+                message=auth_payload["message"],
+                signature=auth_payload["signature"],
                 lock_days=lock_days,
             )
         except VerifierError as exc:
