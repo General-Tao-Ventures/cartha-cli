@@ -305,6 +305,27 @@ def pair_status(
             # Format amount nicely without scientific notation
             amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
             table.add_row("Verified lock amount", f"{amount_str} USDC")
+        
+        # Show lock days and expiration
+        lock_days = sanitized.get("lock_days")
+        if lock_days is not None:
+            table.add_row("Lock days", str(lock_days))
+        
+        expires_at = sanitized.get("expires_at")
+        if expires_at is not None:
+            # Format expiration datetime (date + time for urgency)
+            try:
+                if isinstance(expires_at, str):
+                    # Parse ISO format datetime string
+                    dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                    formatted_expires = format_timestamp(dt.timestamp())
+                elif isinstance(expires_at, datetime):
+                    formatted_expires = format_timestamp(expires_at.timestamp())
+                else:
+                    formatted_expires = str(expires_at)
+                table.add_row("Expires at", formatted_expires)
+            except Exception:
+                table.add_row("Expires at", str(expires_at))
 
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
@@ -333,9 +354,30 @@ def pair_status(
     if password:
         table.add_row("Pair password", password)
     console.print(table)
+    
+    # Show warnings and reminders
     if password:
         console.print(
             "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
+        )
+    
+    # Show mid-epoch expiration warning
+    if state in ("verified", "active"):
+        expires_during_upcoming_epoch = sanitized.get("expires_during_upcoming_epoch")
+        if expires_during_upcoming_epoch:
+            console.print()
+            console.print(
+                "[bold red]⚠ WARNING[/] — Your expiry date is in the middle of the next weekly frozen epoch list! "
+                "If you wish to be included in the upcoming epoch reward, you need to prove lock again with new lock days amount "
+                "or you won't be included in the upcoming epoch list!"
+            )
+    
+    # Show lock expiration reminder
+    if state in ("verified", "active"):
+        console.print()
+        console.print(
+            "[bold yellow]Reminder[/] — If your lock expires, you will receive all your USDC back to the EVM address "
+            "you used to lock funds with, and you won't be able to receive anymore emissions even if you are registered."
         )
 
     # Explicitly return to ensure clean exit
