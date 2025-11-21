@@ -361,6 +361,21 @@ def pair_status(
             "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
         )
     
+    # Show upcoming epoch status
+    if state in ("verified", "active"):
+        in_upcoming_epoch = sanitized.get("in_upcoming_epoch")
+        if in_upcoming_epoch:
+            console.print()
+            console.print(
+                "[bold green]✓ Included[/] — You are included in the upcoming epoch list."
+            )
+        elif in_upcoming_epoch is False:
+            console.print()
+            console.print(
+                "[bold yellow]⚠ Not included[/] — You are not included in the upcoming epoch list. "
+                "You may need to prove lock again or extend your lock to be included."
+            )
+    
     # Show mid-epoch expiration warning
     if state in ("verified", "active"):
         expires_during_upcoming_epoch = sanitized.get("expires_during_upcoming_epoch")
