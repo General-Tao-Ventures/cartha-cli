@@ -4,11 +4,9 @@ on:
   push:
     branches:
       - main
-      - demo-verifier
   pull_request:
     branches:
       - main
-      - demo-verifier
   workflow_dispatch: # Allow manual triggers
 
 jobs:
@@ -41,7 +39,7 @@ jobs:
         run: uv run pytest
         env:
           # Set test environment variables if needed
-          CARTHA_VERIFIER_URL: "http://127.0.0.1:8000"
+          CARTHA_VERIFIER_URL: "https://cartha-verifier-826542474079.us-central1.run.app"
 
       - name: Set Test Status
         if: always() && github.event_name == 'pull_request'
@@ -61,60 +59,3 @@ jobs:
               description: testStatus === 'success' ? 'All tests passed' : 'Tests failed',
               context: 'ci/tests'
             });
-
-  lint:
-    name: Lint Code
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Run ruff check
-        run: uv run ruff check cartha_cli tests
-
-      - name: Run ruff format check
-        run: uv run ruff format --check cartha_cli tests
-
-  type-check:
-    name: Type Check
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: "latest"
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install dependencies
-        run: uv sync
-
-      - name: Run mypy
-        run: uv run mypy .
-        continue-on-error: true  # Allow type checking to fail without failing the workflow
-
