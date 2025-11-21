@@ -464,7 +464,7 @@ def test_pair_status_command(monkeypatch):
     assert "yes" in result.stdout
     assert "Pair password" in result.stdout
     assert "0x22" in result.stdout
-    assert "Keep it safe" in result.stdout
+    assert "password safe" in result.stdout
 
 
 def test_pair_status_command_json(monkeypatch):
