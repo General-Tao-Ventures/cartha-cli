@@ -25,7 +25,6 @@ def load_payload_file(
     password: str | None,
     signature: str | None,
     timestamp: int | None,
-    lock_days: int | None,
 ) -> tuple[
     int | None,
     str | None,
@@ -37,7 +36,6 @@ def load_payload_file(
     str | None,
     str | None,
     str | None,
-    int | None,
     int | None,
 ]:
     """Load and validate payload from file, overriding with CLI args if provided.
@@ -173,11 +171,6 @@ def load_payload_file(
     timestamp = (
         timestamp if timestamp is not None else payload_data.get("timestamp")
     )
-    lock_days = (
-        lock_days
-        if lock_days is not None
-        else payload_data.get("lock_days") or payload_data.get("lockDays")
-    )
 
     # Validate that all required fields are present
     missing_fields = []
@@ -201,8 +194,6 @@ def load_payload_file(
         missing_fields.append("signature")
     if timestamp is None:
         missing_fields.append("timestamp")
-    if lock_days is None:
-        missing_fields.append("lock_days")
 
     if missing_fields:
         console.print(
@@ -225,6 +216,5 @@ def load_payload_file(
         password,
         signature,
         timestamp,
-        lock_days,
     )
 

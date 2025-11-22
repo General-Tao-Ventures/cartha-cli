@@ -26,13 +26,12 @@ def generate_external_signing_files(
     amount_base_units: int,
     password: str,
     timestamp: int,
-    lock_days: int,
 ) -> tuple[Path, Path]:
     """Generate EIP-712 signing files for external signing.
 
     Returns tuple of (json_filename, txt_filename)
     """
-    # Build EIP-712 message structure
+    # Build EIP-712 message structure (without lockDays - read from on-chain event)
     eip712_message = LockProofMessage(
         chain_id=chain,
         vault_address=Web3.to_checksum_address(vault),
@@ -43,7 +42,6 @@ def generate_external_signing_files(
         amount=amount_base_units,
         password=password.lower(),
         timestamp=timestamp,
-        lock_days=lock_days,
     )
     typed_data = eip712_message.to_eip712()
 
@@ -82,6 +80,8 @@ def generate_external_signing_files(
 Generated: {datetime.now(UTC).isoformat()}
 
 IMPORTANT: Copy the JSON from {json_filename.name} exactly as-is. Do not modify any values, spacing, or formatting.
+
+NOTE: lockDays is no longer included in the signature - it's read from the on-chain LockCreated event.
 
 === Message Details ===
 Chain ID: {chain}

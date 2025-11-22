@@ -31,7 +31,6 @@ def submit_lock_proof_payload(
     password: str,
     signature: str,
     timestamp: int | None = None,
-    lock_days: int,
 ) -> dict[str, Any]:
     """Create and validate a lock proof payload."""
     if amount <= 0:
@@ -67,7 +66,6 @@ def submit_lock_proof_payload(
         "pwd": password,
         "timestamp": timestamp,
         "signature": signature,
-        "lockDays": lock_days,
     }
 
 
@@ -81,7 +79,6 @@ def generate_eip712_signature(
     amount: int,
     password: str,
     timestamp: int,
-    lock_days: int,
     private_key: str,
 ) -> tuple[str, str]:
     """Generate EIP-712 signature for LockProof.
@@ -95,7 +92,6 @@ def generate_eip712_signature(
         amount: Amount in base units
         password: Pair password (0x-prefixed hex)
         timestamp: Unix timestamp
-        lock_days: Lock period in days (7-365)
         private_key: EVM private key (0x-prefixed hex)
 
     Returns:
@@ -123,7 +119,7 @@ def generate_eip712_signature(
     if len(tx_hash_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
         exit_with_error("Transaction hash must be 32 bytes (0x + 64 hex characters)")
 
-    # Build EIP-712 message
+    # Build EIP-712 message (without lockDays - read from on-chain event)
     message = LockProofMessage(
         chain_id=chain_id,
         vault_address=vault_address,
@@ -134,7 +130,6 @@ def generate_eip712_signature(
         amount=amount,
         password=password_normalized,
         timestamp=timestamp,
-        lock_days=lock_days,
     )
 
     # Sign the message

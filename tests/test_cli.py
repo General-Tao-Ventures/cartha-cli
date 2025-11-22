@@ -551,16 +551,9 @@ def test_prove_lock_command_success(monkeypatch):
         # Mock Rich Confirm.ask() to return True (accept confirmation)
         return kwargs.get("default", True)
 
-    def fake_prompt(*args, **kwargs):
-        # Mock prompt for lock_days
-        if "Lock period" in str(args[0]):
-            return "30"  # Return default lock_days
-        return "default"
-
     monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
-    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     result = runner.invoke(
         app,
@@ -595,9 +588,8 @@ def test_prove_lock_command_success(monkeypatch):
     # Amount "12345" is < 1e9, so treated as normalized USDC and converted to base units
     assert payload["amount"] == 12345000000  # 12345 USDC = 12345 * 1e6 base units
     assert payload["pwd"] == "0x" + "44" * 32
-    # lockDays should be included (default or from prompt)
-    assert "lockDays" in payload
-    assert 7 <= payload["lockDays"] <= 365
+    # lockDays is no longer in payload - read from on-chain event
+    assert "lockDays" not in payload
 
 
 def test_prove_lock_with_local_signature_generation(monkeypatch):
@@ -637,9 +629,6 @@ def test_prove_lock_with_local_signature_generation(monkeypatch):
         return next(prompt_responses, kwargs.get("default", True))
 
     def fake_prompt(*args, **kwargs):
-        # Mock prompt for lock_days
-        if "Lock period" in str(args[0]):
-            return "30"  # Return default lock_days
         return "default"
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
@@ -705,7 +694,6 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
             "0x" + "66" * 65,  # Paste signature
             "0x1111111111111111111111111111111111111111",  # EVM address
             "1234567890",  # Timestamp used when signing
-            "30",  # Lock period in days
             True,  # "Submit this lock proof to the verifier?" -> y
         ]
     )
@@ -714,9 +702,6 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
         return next(prompt_responses, kwargs.get("default", True))
 
     def fake_prompt(*args, **kwargs):
-        # Mock prompt for lock_days
-        if "Lock period" in str(args[0]):
-            return next(prompt_responses)
         return next(prompt_responses)
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
@@ -796,9 +781,6 @@ def test_prove_lock_local_signature_without_env_var(monkeypatch):
     def fake_prompt(*args, **kwargs):
         if "private key" in str(args[0]).lower():
             return next(prompt_responses)
-        # Mock prompt for lock_days
-        if "Lock period" in str(args[0]):
-            return "30"  # Return default lock_days
         return "default"
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
@@ -923,9 +905,6 @@ def test_prove_lock_external_signing_flow(monkeypatch):
         return next(prompt_responses, kwargs.get("default", True))
 
     def fake_prompt(*args, **kwargs):
-        # Mock prompt for lock_days
-        if "Lock period" in str(args[0]):
-            return "30"  # Return default lock_days
         return next(prompt_responses)
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
@@ -977,7 +956,7 @@ def test_generate_eip712_signature_helper(monkeypatch):
     test_private_key = test_account.key.hex()
     test_address = test_account.address
 
-    # Test signature generation
+    # Test signature generation (without lockDays - read from on-chain event)
     signature, derived_address = generate_eip712_signature(
         chain_id=8453,
         vault_address="0x000000000000000000000000000000000000dEaD",
@@ -987,7 +966,6 @@ def test_generate_eip712_signature_helper(monkeypatch):
         amount=250000000,
         password="0x" + "44" * 32,
         timestamp=1234567890,
-        lock_days=30,
         private_key=test_private_key,
     )
 
@@ -1029,7 +1007,7 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
         "password": "0x" + "44" * 32,
         "signature": "0x" + "88" * 65,
         "timestamp": 1234567890,
-        "lock_days": 30,  # Include lock_days
+        # lock_days removed - read from on-chain event
     }
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -1056,15 +1034,15 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
         assert payload["slotUID"] == "9"
         assert payload["amount"] == 250000000
         assert payload["signature"] == "0x" + "88" * 65
-        assert payload["lockDays"] == 30
+        assert "lockDays" not in payload  # Removed - read from on-chain event
     finally:
         import os
 
         os.unlink(payload_file)
 
 
-def test_prove_lock_with_lock_days_cli(monkeypatch):
-    """Test prove-lock with lock_days provided via CLI."""
+def test_prove_lock_without_lock_days_cli(monkeypatch):
+    """Test prove-lock without lock_days (removed - read from on-chain event)."""
     captured = {}
 
     def fake_submit(payload):
@@ -1100,36 +1078,19 @@ def test_prove_lock_with_lock_days_cli(monkeypatch):
             "0x" + "44" * 32,
             "--signature",
             "0x" + "55" * 65,
-            "--lock-days",
-            "90",
         ],
     )
 
     assert result.exit_code == 0
     payload = captured["payload"]
-    assert payload["lockDays"] == 90
+    assert "lockDays" not in payload  # Removed - read from on-chain event
 
 
-def test_prove_lock_lock_days_validation(monkeypatch):
-    """Test that lock_days validation rejects values outside 7-365 range."""
-    prompt_responses = iter(
-        [
-            "5",  # Too low - should reject
-            "400",  # Too high - should reject
-            "30",  # Valid
-            True,  # Submit confirmation
-        ]
-    )
-
-    def fake_prompt(*args, **kwargs):
-        if "Lock period" in str(args[0]):
-            return next(prompt_responses)
-        return "default"
-
+def test_prove_lock_without_lock_days_validation(monkeypatch):
+    """Test that prove-lock works without lock_days (removed - read from on-chain event)."""
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses, kwargs.get("default", True))
+        return kwargs.get("default", True)
 
-    monkeypatch.setattr("typer.prompt", fake_prompt)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     # Mock submit to capture payload
@@ -1167,14 +1128,14 @@ def test_prove_lock_lock_days_validation(monkeypatch):
         ],
     )
 
-    # Should eventually succeed with valid lock_days
+    # Should succeed without lock_days
     assert result.exit_code == 0
     payload = captured["payload"]
-    assert payload["lockDays"] == 30
+    assert "lockDays" not in payload  # Removed - read from on-chain event
 
 
-def test_prove_lock_payload_file_with_lock_days(monkeypatch):
-    """Test prove-lock with payload file that includes lock_days."""
+def test_prove_lock_payload_file_without_lock_days(monkeypatch):
+    """Test prove-lock with payload file without lock_days (removed - read from on-chain event)."""
     import json
     import tempfile
 
@@ -1192,7 +1153,7 @@ def test_prove_lock_payload_file_with_lock_days(monkeypatch):
 
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
-    # Create a temporary payload file with lock_days
+    # Create a temporary payload file without lock_days (removed)
     payload_data = {
         "chain": 8453,
         "vault": "0x000000000000000000000000000000000000dEaD",
@@ -1205,7 +1166,7 @@ def test_prove_lock_payload_file_with_lock_days(monkeypatch):
         "password": "0x" + "44" * 32,
         "signature": "0x" + "88" * 65,
         "timestamp": 1234567890,
-        "lock_days": 180,
+        # lock_days removed - read from on-chain event
     }
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -1224,19 +1185,33 @@ def test_prove_lock_payload_file_with_lock_days(monkeypatch):
 
         assert result.exit_code == 0
         payload = captured["payload"]
-        assert payload["lockDays"] == 180
+        assert "lockDays" not in payload  # Removed - read from on-chain event
     finally:
         import os
 
         os.unlink(payload_file)
 
 
-def test_prove_lock_payload_file_missing_lock_days(monkeypatch):
-    """Test that missing lock_days in payload file causes error."""
+def test_prove_lock_payload_file_without_lock_days_succeeds(monkeypatch):
+    """Test that payload file without lock_days succeeds (removed - read from on-chain event)."""
     import json
     import tempfile
 
-    # Create a temporary payload file without lock_days
+    captured = {}
+
+    def fake_submit(payload):
+        captured["payload"] = payload
+        return {"ok": True}
+
+    monkeypatch.setattr("cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
+
+    def fake_confirm(*args, **kwargs):
+        return kwargs.get("default", True)
+
+    monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+
+    # Create a temporary payload file without lock_days (now optional/removed)
     payload_data = {
         "chain": 8453,
         "vault": "0x000000000000000000000000000000000000dEaD",
@@ -1249,7 +1224,7 @@ def test_prove_lock_payload_file_missing_lock_days(monkeypatch):
         "password": "0x" + "44" * 32,
         "signature": "0x" + "88" * 65,
         "timestamp": 1234567890,
-        # Missing lock_days
+        # lock_days removed - read from on-chain event
     }
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -1266,19 +1241,17 @@ def test_prove_lock_payload_file_missing_lock_days(monkeypatch):
             ],
         )
 
-        assert result.exit_code == 1
-        assert (
-            "lock_days" in result.stdout.lower()
-            or "missing required fields" in result.stdout.lower()
-        )
+        assert result.exit_code == 0  # Should succeed without lock_days
+        payload = captured["payload"]
+        assert "lockDays" not in payload  # Removed - read from on-chain event
     finally:
         import os
 
         os.unlink(payload_file)
 
 
-def test_prove_lock_lock_days_in_eip712_signature(monkeypatch):
-    """Test that lock_days is included in EIP-712 signature generation."""
+def test_prove_lock_eip712_signature_without_lock_days(monkeypatch):
+    """Test that EIP-712 signature generation works without lock_days (removed - read from on-chain event)."""
     try:
         from eth_account import Account
     except ImportError:
@@ -1312,14 +1285,6 @@ def test_prove_lock_lock_days_in_eip712_signature(monkeypatch):
     monkeypatch.setattr("typer.confirm", fake_confirm)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
-    # Mock prompt for lock_days
-    def fake_prompt(*args, **kwargs):
-        if "Lock period" in str(args[0]):
-            return "60"  # Return 60 days
-        return "default"
-
-    monkeypatch.setattr("typer.prompt", fake_prompt)
-
     result = runner.invoke(
         app,
         [
@@ -1343,5 +1308,5 @@ def test_prove_lock_lock_days_in_eip712_signature(monkeypatch):
 
     assert result.exit_code == 0
     payload = captured["payload"]
-    assert payload["lockDays"] == 60
+    assert "lockDays" not in payload  # Removed - read from on-chain event
     assert "signature" in payload

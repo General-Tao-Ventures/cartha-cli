@@ -106,12 +106,6 @@ def prove_lock(
         help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
         show_default=False,
     ),
-    lock_days: int | None = typer.Option(  # noqa: B008
-        None,
-        "--lock-days",
-        help="Lock period in days (min 7, max 365). Required for lock proof submission.",
-        show_default=False,
-    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit the verifier response as JSON."
     ),
@@ -134,7 +128,6 @@ def prove_lock(
                 password,
                 signature,
                 timestamp,
-                lock_days,
             ) = load_payload_file(
                 payload_file,
                 chain,
@@ -147,7 +140,6 @@ def prove_lock(
                 password,
                 signature,
                 timestamp,
-                lock_days,
             )
         else:
             # Normalize hex fields if provided via CLI args
@@ -216,9 +208,9 @@ def prove_lock(
                     )
 
         # Collect all required fields
-        chain, vault, tx, amount_base_units, hotkey, slot, password, lock_days = (
+        chain, vault, tx, amount_base_units, hotkey, slot, password = (
             _collect_required_fields(
-                chain, vault, tx, amount, amount_base_units, hotkey, slot, password, lock_days, auto_fetch_uid
+                chain, vault, tx, amount, amount_base_units, hotkey, slot, password, auto_fetch_uid
             )
         )
 
@@ -239,7 +231,6 @@ def prove_lock(
                         amount=amount_base_units,
                         password=password,
                         timestamp=timestamp,
-                        lock_days=lock_days,
                         private_key=private_key_for_signing,
                     )
                     derived_evm = Web3.to_checksum_address(derived_evm_str)
@@ -269,7 +260,6 @@ def prove_lock(
                     amount_base_units=amount_base_units,
                     password=password,
                     timestamp=timestamp,
-                    lock_days=lock_days,
                 )
 
                 console.print("\n[bold green]✓ EIP-712 message files generated[/]")
@@ -297,7 +287,6 @@ def prove_lock(
         assert password is not None, "Pair password must be set"
         assert signature is not None, "Signature must be set"
         assert timestamp is not None, "Timestamp must be set"
-        assert lock_days is not None, "Lock days must be set"
 
         # Create payload
         slot_id = str(slot)
@@ -312,11 +301,10 @@ def prove_lock(
             password=password,
             signature=signature,
             timestamp=timestamp,
-            lock_days=lock_days,
         )
 
         # Show summary and confirm
-        _show_summary_and_confirm(payload, chain, vault, tx, hotkey, slot_id, miner_evm, lock_days, json_output)
+        _show_summary_and_confirm(payload, chain, vault, tx, hotkey, slot_id, miner_evm, json_output)
 
         # Submit
         send_lock_proof(payload, json_output)
@@ -480,9 +468,8 @@ def _collect_required_fields(
     hotkey: str | None,
     slot: int | None,
     password: str | None,
-    lock_days: int | None,
     auto_fetch_uid: bool,
-) -> tuple[int, str, str, int, str, int, str, int]:
+) -> tuple[int, str, str, int, str, int, str]:
     """Collect all required fields, prompting if missing."""
     # Chain
     if chain is None:
@@ -628,26 +615,6 @@ def _collect_required_fields(
                 "[bold red]Error:[/] Pair password must be 32 bytes (0x + 64 hex characters)"
             )
 
-    # Lock days
-    if lock_days is None:
-        while True:
-            try:
-                lock_days_input = typer.prompt(
-                    "Lock period in days (min 7, max 365)",
-                    show_default=False,
-                )
-                lock_days = int(lock_days_input)
-                if lock_days < 7 or lock_days > 365:
-                    console.print(
-                        "[bold red]Error:[/] Lock period must be between 7 and 365 days"
-                    )
-                    continue
-                break
-            except ValueError:
-                console.print(
-                    "[bold red]Error:[/] Lock period must be a valid integer"
-                )
-
     return (
         chain,
         vault,
@@ -656,7 +623,6 @@ def _collect_required_fields(
         hotkey,
         slot,
         password,
-        lock_days,
     )
 
 
@@ -668,7 +634,6 @@ def _show_summary_and_confirm(
     hotkey: str,
     slot_id: str,
     miner_evm: str,
-    lock_days: int,
     json_output: bool,
 ) -> None:
     """Show summary table and get confirmation."""
@@ -689,7 +654,6 @@ def _show_summary_and_confirm(
         summary_table.add_row("Hotkey", hotkey)
         summary_table.add_row("Slot UID", slot_id)
         summary_table.add_row("EVM Address", miner_evm)
-        summary_table.add_row("Lock Days", str(lock_days))
         summary_table.add_row(
             "Signature",
             payload["signature"][:20] + "..." + payload["signature"][-10:],

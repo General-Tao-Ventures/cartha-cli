@@ -35,7 +35,6 @@ OUTPUT_PATH = (Path(__file__).resolve().parent / "outputs" / "lock_proof_payload
 # Mock values for demo
 DEFAULT_CHAIN = 31337
 DEFAULT_VAULT = "0x00000000000000000000000000000000000000aa"  # lowercase for consistency
-DEFAULT_TX = "0x1111111111111111111111111111111111111111111111111111111111111111"
 
 
 def get_random_amount() -> str:
@@ -46,9 +45,39 @@ def get_random_amount() -> str:
     return f"{amount:.2f}"
 
 
-def get_random_lock_days() -> int:
-    """Generate a random lock period between 7 and 365 days."""
-    return random.randint(7, 365)
+def generate_random_tx_hash() -> str:
+    """Generate a random 32-byte transaction hash."""
+    return "0x" + "".join(random.choices("0123456789abcdef", k=64))
+
+
+try:
+    from .pool_ids import pool_name_to_id, format_pool_id, list_pools
+except ImportError:
+    # Fallback if running as script
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent))
+    from pool_ids import pool_name_to_id, format_pool_id, list_pools
+
+
+def generate_pool_id(pool_number: int) -> str:
+    """Generate a pool ID hex string from a pool number (1-255).
+    
+    DEPRECATED: Use pool_name_to_id() with readable names instead.
+    """
+    if pool_number < 1 or pool_number > 255:
+        raise ValueError("Pool number must be between 1 and 255")
+    # Format as 0x0000...00XX where XX is the pool number in hex
+    hex_pool = format(pool_number, "02x")
+    return f"0x{'0' * 62}{hex_pool}"
+
+
+def create_demo_evm_key() -> tuple[str, str]:
+    """Create a demo EVM keypair and return (private_key, address)."""
+    acct = Account.create()
+    private_key = acct.key.hex()
+    address = acct.address
+    return private_key, address
 
 
 def _normalize_hex(value: str, prefix: str = "0x") -> str:
@@ -83,9 +112,14 @@ def main(
         help=f"Vault contract address (default: {DEFAULT_VAULT} for demo).",
     ),
     tx: str = typer.Option(
-        DEFAULT_TX,
+        None,
         "--tx",
-        help="Transaction hash (default: mock hash for demo).",
+        help="Transaction hash. If not provided, a random hash will be generated.",
+    ),
+    pool_id: str = typer.Option(
+        None,
+        "--pool-id",
+        help="Pool ID (readable name like 'USDEUR', 'XAUUSD', or hex string). Defaults to 'USDEUR'.",
     ),
     amount: str = typer.Option(
         None,
@@ -97,11 +131,6 @@ def main(
     ),
     slot: str = typer.Option(None, "--slot", help="Miner slot UID. Required if not in env."),
     pwd: str = typer.Option(None, "--pwd", help="Pair password (0x...). Required if not in env."),
-    lock_days: int = typer.Option(  # noqa: B008
-        None,
-        "--lock-days",
-        help="Lock period in days (min 7, max 365). If not provided, you'll be prompted.",
-    ),
     output: Path = typer.Option(  # noqa: B008
         OUTPUT_PATH, "--output", help="Where to store the generated payload JSON."
     ),
@@ -111,8 +140,10 @@ def main(
     This script uses mock/default values suitable for demo:
     - Chain: 31337 (local/test)
     - Vault: Mock allowlisted vault address
-    - TX: Mock transaction hash
+    - TX: Random transaction hash (unless --tx provided)
+    - Pool ID: USDEUR (readable name) unless --pool-id provided (accepts names like USDEUR, XAUUSD, or hex)
     - Amount: Prompted (defaults to a random float amount, 100-9999 USDC)
+    - Lock Days: Read from on-chain event (set DEMO_LOCK_DAYS in verifier for demo mode)
 
     Set DEMO_SKIP_LOCKPROOF=1 in verifier to bypass on-chain validation.
     """
@@ -125,9 +156,36 @@ def main(
         raise typer.BadParameter("Vault address must be a valid EVM address.")
     vault = Web3.to_checksum_address(vault)
 
-    tx_hash = _normalize_hex(tx.lower())
-    if len(tx_hash) != 66:
-        raise typer.BadParameter("Transaction hash must be 32 bytes (0x + 64 hex chars).")
+    # Generate random TX hash if not provided
+    if tx is None:
+        tx_hash = generate_random_tx_hash()
+        console.print(f"[dim]Generated random transaction hash:[/] [cyan]{tx_hash}[/]")
+    else:
+        tx_hash = _normalize_hex(tx.lower())
+        if len(tx_hash) != 66:
+            raise typer.BadParameter("Transaction hash must be 32 bytes (0x + 64 hex chars).")
+
+    # Handle pool_id (accept readable names or hex)
+    if pool_id is None:
+        pool_id = pool_name_to_id("USDEUR")
+        console.print(f"[dim]Using default pool:[/] [cyan]USDEUR[/] ({pool_id})")
+    else:
+        # Check if it's a readable name first
+        pool_id_upper = pool_id.upper()
+        if pool_id_upper in list_pools():
+            readable_name = pool_id_upper
+            pool_id = pool_name_to_id(readable_name)
+            console.print(f"[dim]Using pool:[/] [cyan]{readable_name}[/] ({pool_id})")
+        else:
+            # Assume it's a hex string
+            pool_id = _normalize_hex(pool_id)
+            if len(pool_id) != 66:
+                raise typer.BadParameter(
+                    "Pool ID must be a readable name (USDEUR, XAUUSD, etc.) "
+                    "or a hex string (0x + 64 hex chars)."
+                )
+            readable_name = format_pool_id(pool_id)
+            console.print(f"[dim]Using pool ID:[/] [cyan]{readable_name}[/]")
 
     # Prompt for amount if not provided
     if amount is None:
@@ -157,49 +215,52 @@ def main(
     if len(password) != 66:
         raise typer.BadParameter("Password must be 32 bytes (0x + 64 hex chars).")
 
-    # Get EVM private key
+    # Get EVM private key (with auto-creation option)
     private_key = os.getenv("CARTHA_EVM_PK")
+    miner_evm = None
+    created_evm_key = False
+    
     if not private_key:
-        console.print("[yellow]Warning:[/] CARTHA_EVM_PK not set.")
-        console.print(
-            "[cyan]Quick fix:[/] Generate a demo key with:\n"
-            "  [green]uv run python testnet/create_demo_evm_key.py --output testnet/outputs/evm_key.json[/]\n"
-            "  [green]export CARTHA_EVM_PK=$(jq -r .CARTHA_EVM_PK testnet/outputs/evm_key.json)[/]\n"
-        )
-        if not typer.confirm(
-            "Continue anyway? (You'll need to paste a private key)", default=False
+        console.print("[yellow]Warning:[/] CARTHA_EVM_PK not set in environment.")
+        if typer.confirm(
+            "Would you like to create a mock EVM key automatically?", default=True
         ):
-            raise typer.Abort()
-        private_key = typer.prompt("Paste demo private key (0x...)", hide_input=True)
-    private_key = _normalize_hex(private_key)
-
-    account = Account.from_key(private_key)
-    miner_evm = Web3.to_checksum_address(account.address)
-
-    # Prompt for lock_days if not provided (with random default)
-    if lock_days is None:
-        random_default = get_random_lock_days()
-        lock_days_input = Prompt.ask(
-            "Lock period in days (min 7, max 365)",
-            default=str(random_default),
-        )
-        try:
-            lock_days = int(lock_days_input)
-            if lock_days < 7 or lock_days > 365:
-                raise typer.BadParameter("Lock period must be between 7 and 365 days.")
-        except ValueError as exc:
-            raise typer.BadParameter("Lock period must be a valid integer.") from exc
+            console.print("[cyan]Creating mock EVM key...[/]")
+            private_key, miner_evm_address = create_demo_evm_key()
+            miner_evm = Web3.to_checksum_address(miner_evm_address)
+            created_evm_key = True
+            console.print(f"[green]✓ Created mock EVM key[/]")
+            console.print(f"[dim]Address:[/] [cyan]{miner_evm}[/]")
+            console.print(f"[dim]Private Key:[/] [yellow]{private_key}[/]")
+            console.print(
+                "\n[dim]Tip:[/] To reuse this key, export it:\n"
+                f"[bold]export CARTHA_EVM_PK={private_key}[/]\n"
+            )
+        else:
+            console.print(
+                "[cyan]Alternative:[/] Generate a demo key with:\n"
+                "  [green]uv run python testnet/create_demo_evm_key.py --output testnet/outputs/evm_key.json[/]\n"
+                "  [green]export CARTHA_EVM_PK=$(jq -r .CARTHA_EVM_PK testnet/outputs/evm_key.json)[/]\n"
+            )
+            if not typer.confirm(
+                "Continue anyway? (You'll need to paste a private key)", default=False
+            ):
+                raise typer.Abort()
+            private_key = typer.prompt("Paste demo private key (0x...)", hide_input=True)
+            private_key = _normalize_hex(private_key)
+            account = Account.from_key(private_key)
+            miner_evm = Web3.to_checksum_address(account.address)
     else:
-        # Validate provided lock_days
-        if lock_days < 7 or lock_days > 365:
-            raise typer.BadParameter("Lock period must be between 7 and 365 days.")
+        private_key = _normalize_hex(private_key)
+        account = Account.from_key(private_key)
+        miner_evm = Web3.to_checksum_address(account.address)
 
     # Get current timestamp
     import time
 
     timestamp = int(time.time())
 
-    # Build EIP-712 message
+    # Build EIP-712 message (lockDays removed - always read from on-chain event)
     message = LockProofMessage(
         chain_id=chain,
         vault_address=vault,
@@ -210,7 +271,6 @@ def main(
         amount=amount_base_units,
         password=password,
         timestamp=timestamp,
-        lock_days=lock_days,
     )
 
     # Sign the message
@@ -223,7 +283,8 @@ def main(
         sig_hex = sig_hex[2:]
     signature_normalized = "0x" + sig_hex
 
-    # Prepare payload
+    # Prepare payload (lockDays removed - always read from on-chain event)
+    # Note: pool_id is stored here for reference but not sent to verifier
     payload = {
         "chain": chain,
         "vault": vault,
@@ -236,7 +297,8 @@ def main(
         "password": password,
         "timestamp": timestamp,
         "signature": signature_normalized,
-        "lock_days": lock_days,
+        # Metadata for reference (not sent to verifier):
+        "_demo_pool_id": pool_id,
     }
 
     # Save to file
@@ -244,6 +306,14 @@ def main(
     output.write_text(json.dumps(payload, indent=2))
 
     console.print(f"\n[bold green]✓ Saved[/] payload to [yellow]{output}[/]")
+    
+    # Show EVM address if it was created
+    if created_evm_key:
+        console.print(f"\n[bold cyan]EVM Address Created:[/] [green]{miner_evm}[/]")
+        console.print(
+            "[dim]This address was automatically generated for demo purposes.[/]\n"
+        )
+    
     console.print("\n[bold cyan]Command to submit lock proof:[/]\n")
     console.print(f"[green]uv run cartha prove-lock --payload-file {output}[/]")
     console.print("\n[dim]Or manually with all parameters:[/]\n")
@@ -258,11 +328,17 @@ def main(
         f"  --miner-evm {miner_evm} \\\n"
         f"  --pwd {password} \\\n"
         f"  --timestamp {timestamp} \\\n"
-        f"  --lock-days {lock_days} \\\n"
         f"  --signature {payload['signature']}[/]"
     )
     console.print(
         f"\n[dim]Note:[/] Amount {amount} USDC = {amount_base_units} base units (sent to verifier)"
+    )
+    pool_display = format_pool_id(pool_id)
+    console.print(
+        f"\n[dim]Note:[/] Pool ID: {pool_display} (stored in payload metadata for reference)"
+    )
+    console.print(
+        "\n[dim]Note:[/] lockDays is read from on-chain event (set DEMO_LOCK_DAYS in verifier for demo mode)"
     )
     console.print(
         "\n[dim]Note:[/] Make sure DEMO_SKIP_LOCKPROOF=1 is set in verifier environment "

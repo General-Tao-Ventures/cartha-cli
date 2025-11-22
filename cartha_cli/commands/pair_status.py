@@ -26,6 +26,23 @@ from .common import (
     handle_wallet_exception,
 )
 
+# Import pool name helper
+try:
+    from ...testnet.pool_ids import pool_id_to_name
+except ImportError:
+    # Fallback if running from different context
+    def pool_id_to_name(pool_id: str) -> str | None:
+        """Simple fallback to decode pool ID."""
+        try:
+            hex_str = pool_id.lower().removeprefix("0x")
+            pool_bytes = bytes.fromhex(hex_str)
+            name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
+            if name and name.isprintable():
+                return name
+        except Exception:
+            pass
+        return None
+
 
 def pair_status(
     wallet_name: str = typer.Option(
@@ -316,25 +333,33 @@ def pair_status(
     # Show lock amounts for verified/active states
     state = sanitized.get("state", "").lower()
     if state in ("verified", "active"):
-        # Show active amount (from last frozen epoch - currently earning rewards)
+        # Show aggregated amounts (backward compatibility)
         active_amount_usdc = sanitized.get("active_lock_amount_usdc")
         verified_amount_usdc = sanitized.get("verified_lock_amount_usdc")
         
         if active_amount_usdc is not None:
             amount_str = f"{active_amount_usdc:.6f}".rstrip("0").rstrip(".")
-            table.add_row("Active lock amount", f"{amount_str} USDC [dim](currently earning)[/]")
+            table.add_row("Active lock amount (total)", f"{amount_str} USDC [dim](currently earning)[/]")
         
         # Show verified amount (from upcoming epoch - will earn rewards next week)
         if verified_amount_usdc is not None:
             amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
             # Only show if different from active amount, or if active amount is None
             if active_amount_usdc is None or verified_amount_usdc != active_amount_usdc:
-                table.add_row("Verified lock amount", f"{amount_str} USDC [dim](next epoch)[/]")
+                table.add_row("Verified lock amount (total)", f"{amount_str} USDC [dim](next epoch)[/]")
 
-        # Show lock days and expiration
+        # Show EVM addresses used
+        evm_addresses = sanitized.get("miner_evm_addresses")
+        if evm_addresses:
+            if len(evm_addresses) == 1:
+                table.add_row("EVM address", evm_addresses[0])
+            else:
+                table.add_row("EVM addresses", f"{len(evm_addresses)} addresses (see pools table)")
+        
+        # Show aggregated lock days and expiration (backward compatibility)
         lock_days = sanitized.get("lock_days")
         if lock_days is not None:
-            table.add_row("Lock days", str(lock_days))
+            table.add_row("Lock days (max)", str(lock_days))
 
         expires_at = sanitized.get("expires_at")
         if expires_at is not None:
@@ -348,9 +373,9 @@ def pair_status(
                     formatted_expires = format_timestamp(expires_at.timestamp())
                 else:
                     formatted_expires = str(expires_at)
-                table.add_row("Expires at", formatted_expires)
+                table.add_row("Earliest expiration", formatted_expires)
             except Exception:
-                table.add_row("Expires at", str(expires_at))
+                table.add_row("Earliest expiration", str(expires_at))
 
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
@@ -389,8 +414,79 @@ def pair_status(
 
     # Show detailed status information for verified/active pairs
     if state in ("verified", "active"):
+        pools = sanitized.get("pools", [])
         in_upcoming_epoch = sanitized.get("in_upcoming_epoch")
         expires_at = sanitized.get("expires_at")
+
+        # Display per-pool table
+        if pools:
+            console.print()
+            console.print("[bold cyan]━━━ Pool Status ━━━[/]")
+            
+            pool_table = Table(show_header=True, header_style="bold cyan")
+            pool_table.add_column("Pool", style="cyan", no_wrap=True)
+            pool_table.add_column("Amount", style="green", justify="right")
+            pool_table.add_column("Lock Days", justify="center")
+            pool_table.add_column("Expires", style="yellow")
+            pool_table.add_column("Status", justify="center")
+            pool_table.add_column("EVM Address", style="dim")
+            
+            for pool in pools:
+                # Format pool name
+                pool_name = pool.get("pool_name") or pool.get("pool_id", "")[:10] + "..."
+                pool_display = pool_name
+                
+                # Format amount
+                amount_usdc = pool.get("amount_usdc", 0)
+                amount_str = f"{amount_usdc:.2f}"
+                
+                # Format expiration
+                pool_expires_at = pool.get("expires_at")
+                expires_str = "N/A"
+                if pool_expires_at:
+                    try:
+                        if isinstance(pool_expires_at, str):
+                            exp_dt = datetime.fromisoformat(pool_expires_at.replace("Z", "+00:00"))
+                        elif isinstance(pool_expires_at, datetime):
+                            exp_dt = pool_expires_at
+                        else:
+                            exp_dt = None
+                        if exp_dt:
+                            expires_str = format_timestamp(exp_dt.timestamp())
+                    except Exception:
+                        expires_str = str(pool_expires_at)
+                
+                # Format status
+                is_active = pool.get("is_active", False)
+                is_verified = pool.get("is_verified", False)
+                pool_in_upcoming = pool.get("in_upcoming_epoch", False)
+                
+                status_parts = []
+                if is_active:
+                    status_parts.append("[green]Active[/]")
+                if is_verified:
+                    status_parts.append("[cyan]Verified[/]")
+                if pool_in_upcoming:
+                    status_parts.append("[bold green]Upcoming[/]")
+                if not status_parts:
+                    status_parts.append("[dim]None[/]")
+                
+                status_str = " / ".join(status_parts)
+                
+                # EVM address (shortened)
+                evm_addr = pool.get("evm_address", "")
+                evm_display = evm_addr[:10] + "..." + evm_addr[-6:] if len(evm_addr) > 16 else evm_addr
+                
+                pool_table.add_row(
+                    pool_display,
+                    f"{amount_str} USDC",
+                    str(pool.get("lock_days", 0)),
+                    expires_str,
+                    status_str,
+                    evm_display,
+                )
+            
+            console.print(pool_table)
 
         console.print()
         console.print("[bold cyan]━━━ Epoch Status ━━━[/]")
@@ -405,7 +501,7 @@ def pair_status(
                 "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha prove-lock[/] to be included."
             )
 
-        # Expiration date information and warnings
+        # Expiration date information and warnings (aggregated)
         if expires_at:
             try:
                 # Parse expiration datetime
@@ -426,7 +522,7 @@ def pair_status(
 
                     if days_until_expiry < 0:
                         console.print(
-                            "[bold red]⚠ EXPIRED[/] — Lock expired. USDC will be returned. No more emissions."
+                            "[bold red]⚠ EXPIRED[/] — Some locks expired. USDC will be returned. No more emissions for expired pools."
                         )
                     elif days_until_expiry <= 7:
                         console.print(
@@ -446,10 +542,14 @@ def pair_status(
         # Concise reminder
         console.print()
         console.print("[bold cyan]━━━ Reminders ━━━[/]")
-        console.print("• Lock expiration: USDC returned automatically, emissions stop.")
+        console.print("• Lock expiration: USDC returned automatically, emissions stop for that pool.")
         console.print(
             "• Top-ups/extensions: Happen automatically on-chain. No CLI action needed."
         )
+        if pools and len(pools) > 1:
+            console.print(
+                "• Multiple pools: Each pool is tracked separately. Expired pools stop earning, others continue."
+            )
 
     # Explicitly return to ensure clean exit
     return
