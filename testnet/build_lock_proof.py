@@ -35,7 +35,7 @@ OUTPUT_DIR = (Path(__file__).resolve().parent / "outputs").resolve()
 
 # Mock values for demo
 DEFAULT_CHAIN = 31337
-DEFAULT_VAULT = "0x00000000000000000000000000000000000000aa"  # Default vault (EURUSD), will be overridden based on pool_id
+DEFAULT_VAULT = "0x00000000000000000000000000000000000000aa"  # lowercase for consistency
 
 
 def get_random_amount() -> str:
@@ -52,15 +52,13 @@ def generate_random_tx_hash() -> str:
 
 
 try:
-    from .pool_ids import pool_name_to_id, format_pool_id, list_pools, pool_id_to_name
-    from .vault_mapping import get_vault_for_pool, VAULT_POOL_MAPPING
+    from .pool_ids import pool_name_to_id, format_pool_id, list_pools
 except ImportError:
     # Fallback if running as script
     import sys
     from pathlib import Path
     sys.path.insert(0, str(Path(__file__).parent))
-    from pool_ids import pool_name_to_id, format_pool_id, list_pools, pool_id_to_name
-    from vault_mapping import get_vault_for_pool, VAULT_POOL_MAPPING
+    from pool_ids import pool_name_to_id, format_pool_id, list_pools
 
 
 def generate_pool_id(pool_number: int) -> str:
@@ -153,8 +151,11 @@ def main(
 
     console.print("[bold cyan]Cartha LockProof Builder (Demo Mode)[/]")
     console.print("Using mock data defaults for easy demo setup.\n")
-    
-    # Note: vault will be auto-updated based on pool_id below, so we validate after pool_id is determined
+
+    # Validate and normalize inputs
+    if not Web3.is_address(vault):
+        raise typer.BadParameter("Vault address must be a valid EVM address.")
+    vault = Web3.to_checksum_address(vault)
 
     # Generate random TX hash if not provided
     if tx is None:
@@ -166,9 +167,6 @@ def main(
             raise typer.BadParameter("Transaction hash must be 32 bytes (0x + 64 hex chars).")
 
     # Handle pool_id (accept readable names or hex)
-    pool_name_readable = None  # Readable name like "BTCUSD", "GBPUSD", etc.
-    pool_id_hex = None  # Hex pool_id like "0x0000...0001"
-    
     if pool_id is None:
         # Randomize pool selection from available pools
         available_pools_dict = list_pools()
@@ -176,59 +174,29 @@ def main(
             # Get list of pool names (keys) and randomly select one
             pool_names = list(available_pools_dict.keys())
             random_pool_name = random.choice(pool_names)
-            pool_name_readable = random_pool_name  # Keep readable name
-            pool_id_hex = pool_name_to_id(random_pool_name)
-            console.print(f"[dim]Randomly selected pool:[/] [cyan]{random_pool_name}[/] ({pool_id_hex})")
+            pool_id = pool_name_to_id(random_pool_name)
+            console.print(f"[dim]Randomly selected pool:[/] [cyan]{random_pool_name}[/] ({pool_id})")
         else:
-            # Fallback to EURUSD if no pools available
-            pool_name_readable = "EURUSD"
-            pool_id_hex = pool_name_to_id("EURUSD")
-            console.print(f"[dim]Using default pool:[/] [cyan]EURUSD[/] ({pool_id_hex})")
+            # Fallback to USDEUR if no pools available
+            pool_id = pool_name_to_id("EURUSD")
+            console.print(f"[dim]Using default pool:[/] [cyan]EURUSD[/] ({pool_id})")
     else:
         # Check if it's a readable name first
         pool_id_upper = pool_id.upper()
         if pool_id_upper in list_pools():
-            pool_name_readable = pool_id_upper  # Keep readable name
-            pool_id_hex = pool_name_to_id(pool_name_readable)
-            console.print(f"[dim]Using pool:[/] [cyan]{pool_name_readable}[/] ({pool_id_hex})")
+            readable_name = pool_id_upper
+            pool_id = pool_name_to_id(readable_name)
+            console.print(f"[dim]Using pool:[/] [cyan]{readable_name}[/] ({pool_id})")
         else:
             # Assume it's a hex string
-            pool_id_hex = _normalize_hex(pool_id)
-            if len(pool_id_hex) != 66:
+            pool_id = _normalize_hex(pool_id)
+            if len(pool_id) != 66:
                 raise typer.BadParameter(
-                    "Pool ID must be a readable name (EURUSD, GBPUSD, etc.) "
+                    "Pool ID must be a readable name (USDEUR, XAUUSD, etc.) "
                     "or a hex string (0x + 64 hex chars)."
                 )
-            # Try to get readable name from hex pool_id
-            pool_name_readable = pool_id_to_name(pool_id_hex)
-            if pool_name_readable:
-                console.print(f"[dim]Using pool:[/] [cyan]{pool_name_readable}[/] ({pool_id_hex})")
-            else:
-                console.print(f"[dim]Using pool ID:[/] [cyan]{pool_id_hex}[/]")
-    
-    # Get vault address based on pool_id (1:1 relationship)
-    # Prefer readable name if available (more reliable), otherwise use hex pool_id
-    # pool_name_readable should be a clean name like "BTCUSD", not a formatted string
-    if pool_name_readable and not pool_name_readable.startswith("0x") and len(pool_name_readable) <= 10:
-        # It's a clean readable name, use it directly
-        vault_for_pool = get_vault_for_pool(pool_name_readable)
-    else:
-        # Use hex pool_id (either no readable name or it's a formatted string)
-        vault_for_pool = get_vault_for_pool(pool_id_hex)
-    
-    if vault.lower() != vault_for_pool.lower():
-        console.print(
-            f"[yellow]⚠ Warning:[/] Vault address '{vault}' doesn't match pool '{pool_name_readable or pool_id_hex}'. "
-            f"Auto-updating to correct vault: [cyan]{vault_for_pool}[/]"
-        )
-        vault = vault_for_pool
-    else:
-        console.print(f"[dim]Vault address matches pool:[/] [cyan]{vault}[/]")
-    
-    # Validate and normalize vault address
-    if not Web3.is_address(vault):
-        raise typer.BadParameter("Vault address must be a valid EVM address.")
-    vault = Web3.to_checksum_address(vault)
+            readable_name = format_pool_id(pool_id)
+            console.print(f"[dim]Using pool ID:[/] [cyan]{readable_name}[/]")
 
     # Prompt for amount if not provided
     if amount is None:
@@ -345,9 +313,9 @@ def main(
         "timestamp": timestamp,
         "signature": signature_normalized,
         # pool_id is used by verifier in demo mode (DEMO_SKIP_LOCKPROOF=1)
-        "pool_id": pool_id_hex,
+        "pool_id": pool_id,
         # Metadata for reference:
-        "_demo_pool_id": pool_id_hex,
+        "_demo_pool_id": pool_id,
         "_name": payload_name,
     }
 
@@ -393,7 +361,7 @@ def main(
     console.print(
         f"\n[dim]Note:[/] Amount {amount} USDC = {amount_base_units} base units (sent to verifier)"
     )
-    pool_display = format_pool_id(pool_id_hex) if pool_id_hex else format_pool_id(pool_id)
+    pool_display = format_pool_id(pool_id)
     console.print(
         f"\n[dim]Note:[/] Pool ID: {pool_display} (used by verifier in demo mode)"
     )
