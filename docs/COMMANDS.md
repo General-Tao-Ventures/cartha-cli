@@ -7,7 +7,6 @@ Complete documentation for all Cartha CLI commands and their arguments.
 - [cartha register](#cartha-register)
 - [cartha pair status](#cartha-pair-status)
 - [cartha prove-lock](#cartha-prove-lock)
-- [cartha extend-lock](#cartha-extend-lock)
 - [cartha claim-deposit](#cartha-claim-deposit)
 - [cartha version](#cartha-version)
 - [Environment Variables](#environment-variables)
@@ -148,6 +147,8 @@ cartha prove-lock [OPTIONS]
 | `--timestamp` | integer | No | Unix timestamp (seconds) used when signing the LockProof. Required when using signature from `build_lock_proof.py` |
 | `--json` | flag | No | Emit the verifier response as JSON |
 
+**Note:** `lockDays` is NOT included in the LockProof payload—it is always read from the on-chain `LockCreated` event. The verifier will extract `lockDays` from the vault contract event automatically.
+
 *Required unless `--payload-file` is provided
 
 ### Examples
@@ -205,99 +206,10 @@ See [EIP-712 Signing Guide](EIP712_SIGNING.md) for detailed instructions.
 4. Shows a summary table with all lock proof details
 5. Confirms before submission
 6. Submits the lock proof to the verifier
-7. Displays success message with amount details
+7. Verifier extracts `lockDays` from on-chain `LockCreated` event (not from LockProof)
+8. Displays success message with amount details
 
----
-
-## cartha extend-lock
-
-Extend your lock period by submitting a new lock proof with updated lock days.
-
-### Usage
-
-```bash
-cartha extend-lock [OPTIONS]
-```
-
-### Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `--wallet-name`, `--wallet.name` | string | Yes | Coldkey wallet name |
-| `--wallet-hotkey`, `--wallet.hotkey` | string | Yes | Hotkey name within the wallet |
-| `--slot` | integer | No | Subnet UID assigned to the miner. If not provided, will auto-fetch from network |
-| `--auto-fetch-uid` | flag | No | Automatically fetch UID from Bittensor network (default: enabled) |
-| `--network` | string | No | Bittensor network name (default: `finney`) |
-| `--netuid` | integer | No | Subnet netuid (default: `35`) |
-| `--lock-days` | integer | No | New lock period in days (min 7, max 365). This will REPLACE your current lock days, not extend them |
-| `--json` | flag | No | Emit the verifier response as JSON |
-
-### Examples
-
-```bash
-# Extend lock with interactive prompts
-cartha extend-lock \
-  --wallet-name cold \
-  --wallet-hotkey hot
-
-# Extend lock with specific lock days
-cartha extend-lock \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --lock-days 365
-
-# JSON output mode
-cartha extend-lock \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --lock-days 180 \
-  --json
-```
-
-### Requirements
-
-- You must have an existing lock proof (use `cartha pair status` to check)
-- You must have access to the EVM private key used for the original lock
-- You must sign a new EIP-712 signature with the updated lock days
-
-### Important Notes
-
-⚠️ **This REPLACES your lock days, not extends them**
-
-When you use `extend-lock`, the new lock period is calculated from the **current time**, not from your original expiration date. This means:
-
-- If your lock expires in 30 days and you extend with 60 days, your new expiration will be 60 days from now (not 90 days from now)
-- The `proof_at` timestamp is recalculated to the current time
-- This effectively replaces your lock period rather than adding to it
-
-### What It Does
-
-1. Authenticates with Bittensor signature to prove hotkey ownership
-2. Fetches your current lock proof details from the verifier
-3. Prompts for new lock days (or uses `--lock-days` if provided)
-4. Collects your EVM private key for signing (or uses `CARTHA_EVM_PK` environment variable)
-5. Generates a new EIP-712 signature with:
-   - Same transaction hash, vault, chain, amount from your original lock
-   - New `lock_days` value
-   - Current timestamp (recalculating `proof_at`)
-6. Shows a summary table with all details
-7. Confirms before submission
-8. Submits the lock proof to the verifier
-9. The miner is automatically added to the upcoming epoch list
-
-### When to Use
-
-- Your lock is expiring soon and you want to continue receiving emissions
-- You want to change your lock period (e.g., from 30 days to 365 days)
-- You want to ensure you're included in the upcoming epoch
-
-### Environment Variables
-
-- `CARTHA_EVM_PK`: Set this to avoid prompting for your EVM private key each time
-
-```bash
-export CARTHA_EVM_PK="0x..."
-```
+**Note:** `lockDays` is always read from the vault contract's `LockCreated` event. It is not included in the LockProof payload.
 
 ---
 
@@ -418,20 +330,10 @@ CARTHA_NETUID=35
      --wallet-hotkey hot
    ```
 
-2. **Extend your lock:**
-   ```bash
-   cartha extend-lock \
-     --wallet-name cold \
-     --wallet-hotkey hot \
-     --lock-days 365
-   ```
-
-3. The CLI will:
-   - Authenticate with Bittensor signature
-   - Fetch your current lock proof details
-   - Prompt for EVM private key (or use `CARTHA_EVM_PK`)
-   - Generate new signature with updated lock days
-   - Submit to verifier
+2. **Top-ups/extensions happen automatically on-chain** - no CLI action needed!
+   - Make a top-up or extend transaction on the vault contract
+   - The verifier automatically detects `LockUpdated` events
+   - Your updated amount/lock_days will be reflected in `pair status` within 30 seconds
 
 ### Using Payload Files
 

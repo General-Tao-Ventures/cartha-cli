@@ -313,14 +313,23 @@ def pair_status(
     table.add_row("Slot UID", slot_id)
     table.add_row("State", sanitized["state"])
 
-    # Show verified lock amount for verified/active states
+    # Show lock amounts for verified/active states
     state = sanitized.get("state", "").lower()
     if state in ("verified", "active"):
+        # Show active amount (from last frozen epoch - currently earning rewards)
+        active_amount_usdc = sanitized.get("active_lock_amount_usdc")
         verified_amount_usdc = sanitized.get("verified_lock_amount_usdc")
+        
+        if active_amount_usdc is not None:
+            amount_str = f"{active_amount_usdc:.6f}".rstrip("0").rstrip(".")
+            table.add_row("Active lock amount", f"{amount_str} USDC [dim](currently earning)[/]")
+        
+        # Show verified amount (from upcoming epoch - will earn rewards next week)
         if verified_amount_usdc is not None:
-            # Format amount nicely without scientific notation
             amount_str = f"{verified_amount_usdc:.6f}".rstrip("0").rstrip(".")
-            table.add_row("Verified lock amount", f"{amount_str} USDC")
+            # Only show if different from active amount, or if active amount is None
+            if active_amount_usdc is None or verified_amount_usdc != active_amount_usdc:
+                table.add_row("Verified lock amount", f"{amount_str} USDC [dim](next epoch)[/]")
 
         # Show lock days and expiration
         lock_days = sanitized.get("lock_days")
@@ -393,7 +402,7 @@ def pair_status(
             )
         elif in_upcoming_epoch is False:
             console.print(
-                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha extend-lock[/] or [bold]cartha prove-lock[/] to be included."
+                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha prove-lock[/] to be included."
             )
 
         # Expiration date information and warnings
@@ -421,11 +430,11 @@ def pair_status(
                         )
                     elif days_until_expiry <= 7:
                         console.print(
-                            f"[bold red]⚠ Expiring in {days_until_expiry:.1f} days[/] — Extend lock to continue receiving emissions."
+                            f"[bold red]⚠ Expiring in {days_until_expiry:.1f} days[/] — Make a new lock transaction on-chain to continue receiving emissions."
                         )
                     elif days_until_expiry <= 30:
                         console.print(
-                            f"[bold yellow]⚠ Expiring in {days_until_expiry:.0f} days[/] — Consider extending your lock."
+                            f"[bold yellow]⚠ Expiring in {days_until_expiry:.0f} days[/] — Consider making a new lock transaction on-chain soon."
                         )
                     else:
                         console.print(
@@ -439,7 +448,7 @@ def pair_status(
         console.print("[bold cyan]━━━ Reminders ━━━[/]")
         console.print("• Lock expiration: USDC returned automatically, emissions stop.")
         console.print(
-            "• Extend lock: Use [bold]cartha extend-lock[/] to continue receiving emissions."
+            "• Top-ups/extensions: Happen automatically on-chain. No CLI action needed."
         )
 
     # Explicitly return to ensure clean exit

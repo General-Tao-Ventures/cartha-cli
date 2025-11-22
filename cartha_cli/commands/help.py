@@ -37,9 +37,6 @@ def print_root_help() -> None:
         "[green]prove-lock[/]", "Submit an externally signed LockProof payload."
     )
     commands.add_row(
-        "[green]extend-lock[/]", "Extend lock period by submitting new lock proof with updated lock days."
-    )
-    commands.add_row(
         "[green]claim-deposit[/]", "Alias for prove-lock (deposit-first flow)."
     )
     console.print(commands)
