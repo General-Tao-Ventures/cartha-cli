@@ -4,26 +4,46 @@ Complete documentation for all Cartha CLI commands and their arguments.
 
 ## Table of Contents
 
-- [cartha register](#cartha-register)
-- [cartha pair status](#cartha-pair-status)
-- [cartha prove-lock](#cartha-prove-lock)
-- [cartha claim-deposit](#cartha-claim-deposit)
+- [Command Groups](#command-groups)
+- [Miner Commands](#miner-commands)
+  - [cartha miner register](#cartha-miner-register)
+  - [cartha miner status](#cartha-miner-status)
+  - [cartha miner password](#cartha-miner-password)
+- [Portfolio Commands](#portfolio-commands)
+  - [cartha portfolio lock](#cartha-portfolio-lock)
+  - [cartha portfolio claim](#cartha-portfolio-claim)
+- [Other Commands](#other-commands)
 - [cartha version](#cartha-version)
+  - [cartha pair status](#cartha-pair-status-legacy)
 - [Environment Variables](#environment-variables)
+- [Common Workflows](#common-workflows)
 
 ---
 
-## cartha register
+## Command Groups
+
+The CLI is organized into logical command groups with short aliases:
+
+- **`cartha miner`** (or **`cartha m`**) - Miner management commands
+- **`cartha portfolio`** (or **`cartha p`**) - Portfolio management commands
+
+---
+
+## Miner Commands
+
+### cartha miner register
 
 Register a hotkey on the Cartha subnet and obtain your pair password.
 
-### Usage
+#### Usage
 
 ```bash
-cartha register [OPTIONS]
+cartha miner register [OPTIONS]
+# or
+cartha m register [OPTIONS]
 ```
 
-### Options
+#### Options
 
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -34,25 +54,28 @@ cartha register [OPTIONS]
 | `--pow` | flag | No | Use PoW registration instead of burned registration |
 | `--cuda` | flag | No | Enable CUDA for PoW registration |
 
-### Examples
+#### Examples
 
 ```bash
 # Register with burned TAO (default)
-cartha register \
+cartha miner register \
   --wallet-name cold \
   --wallet-hotkey hot \
   --network finney \
   --netuid 35
 
 # Register with PoW
-cartha register \
+cartha miner register \
   --wallet-name cold \
   --wallet-hotkey hot \
   --pow \
   --cuda
+
+# Using short alias
+cartha m register --wallet-name cold --wallet-hotkey hot
 ```
 
-### What It Does
+#### What It Does
 
 1. Loads your wallet and validates hotkey ownership
 2. Checks if the hotkey is already registered
@@ -65,72 +88,181 @@ cartha register \
 
 ---
 
-## cartha pair status
+### cartha miner status
 
-Check the status of your miner pair on the verifier.
+Check your miner status and pool information **without requiring authentication**. This is the fastest way to check your miner's status, active pools, expiration dates, and password issuance status.
 
-### Usage
+#### Usage
 
 ```bash
-cartha pair status [OPTIONS]
+cartha miner status [OPTIONS]
+# or
+cartha m status [OPTIONS]
 ```
 
-### Options
+#### Options
 
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
 | `--wallet-name`, `--wallet.name` | string | Yes | Coldkey wallet name |
 | `--wallet-hotkey`, `--wallet.hotkey` | string | Yes | Hotkey name within the wallet |
-| `--hotkey` | string | Yes | Hotkey SS58 address |
-| `--slot` | integer | Yes | Subnet UID assigned to the miner |
+| `--slot` | integer | No | Subnet UID assigned to the miner (auto-fetched if not provided) |
+| `--auto-fetch-uid` | flag | No | Automatically fetch UID from Bittensor network (default: enabled) |
 | `--network` | string | No | Bittensor network name (default: `finney`) |
 | `--netuid` | integer | No | Subnet netuid (default: `35`) |
 | `--json` | flag | No | Emit the raw JSON response |
 
-### Examples
+#### Examples
 
 ```bash
-# Check pair status
-cartha pair status \
+# Quick status check (no authentication, auto-fetches UID)
+cartha miner status \
+  --wallet-name cold \
+  --wallet-hotkey hot
+
+# Using short alias
+cartha m status --wallet-name cold --wallet-hotkey hot
+
+# With explicit slot UID
+cartha miner status \
   --wallet-name cold \
   --wallet-hotkey hot \
-  --hotkey bt1abc123... \
   --slot 123
 
-# Get JSON output
-cartha pair status \
+# JSON output
+cartha miner status \
   --wallet-name cold \
   --wallet-hotkey hot \
-  --hotkey bt1abc123... \
-  --slot 123 \
   --json
 ```
 
-### What It Does
+#### Output
 
-1. Loads your wallet and validates hotkey ownership
-2. Signs a challenge message with your hotkey
-3. Sends the signed challenge to the verifier
-4. Retrieves pair metadata including:
-   - Verification status
-   - Locked USDC amounts
-   - Password issuance timestamp
-   - Registration status
-5. If no password exists, prompts to generate one
+The command displays:
+
+- **Miner Status Table:**
+  - Hotkey address
+  - Slot UID
+  - State (active, verified, pending, unknown)
+  - EVM address(es) used for locking
+  - Password issued status (yes/no)
+  - Password issued timestamp (if applicable)
+
+- **Active Pools Table** (if pools exist):
+  - Pool name (human-readable, e.g., "EURUSD", "BTCUSDC")
+  - Amount locked (USDC)
+  - Lock days
+  - Expiration date with days remaining countdown
+    - ⚠ Red warning if < 7 days remaining
+    - ⚠ Yellow warning if < 15 days remaining
+  - Status (Active / In Next Epoch)
+  - EVM address used for that pool
+
+- **Reminders:**
+  - Lock expiration behavior
+  - Top-up/extension information
+  - Multi-pool guidance (if applicable)
+  - Password viewing instructions
+
+#### Key Features
+
+- ✅ **No authentication required** - Fast status checks without signature verification
+- ✅ **Multi-pool support** - View all your active pools in one command
+- ✅ **Expiration countdown** - See days remaining with color-coded warnings
+- ✅ **Password never displayed** - Security by default
+- ✅ **Auto-fetches UID** - No need to remember your slot UID
+
+#### What It Does
+
+1. Loads your wallet to get the hotkey address
+2. Automatically fetches your slot UID from the Bittensor network (or prompts if disabled)
+3. Queries the verifier's public `/v1/miner/status` endpoint (no signature required)
+4. Displays comprehensive miner and pool information
+5. Shows expiration warnings for pools expiring soon
 
 ---
 
-## cartha prove-lock
+### cartha miner password
 
-Submit a lock proof for your USDC deposit to the verifier.
+View your pair password **with authentication**. This command requires Bittensor signature verification to display the actual password and its issuance date. If no password exists, it will prompt you to create one.
 
-### Usage
+#### Usage
 
 ```bash
-cartha prove-lock [OPTIONS]
+cartha miner password [OPTIONS]
+# or
+cartha m password [OPTIONS]
 ```
 
-### Options
+#### Options
+
+| Option | Type | Required | Description |
+| --- | --- | --- | --- |
+| `--wallet-name`, `--wallet.name` | string | Yes | Coldkey wallet name |
+| `--wallet-hotkey`, `--wallet.hotkey` | string | Yes | Hotkey name within the wallet |
+| `--slot` | integer | No | Subnet UID assigned to the miner (auto-fetched if not provided) |
+| `--auto-fetch-uid` | flag | No | Automatically fetch UID from Bittensor network (default: enabled) |
+| `--network` | string | No | Bittensor network name (default: `finney`) |
+| `--netuid` | integer | No | Subnet netuid (default: `35`) |
+| `--json` | flag | No | Emit the raw JSON response |
+
+#### Examples
+
+```bash
+# View password (requires authentication)
+cartha miner password \
+  --wallet-name cold \
+  --wallet-hotkey hot
+
+# Using short alias
+cartha m password --wallet-name cold --wallet-hotkey hot
+
+# With explicit slot UID
+cartha miner password \
+  --wallet-name cold \
+  --wallet-hotkey hot \
+  --slot 123
+```
+
+#### Output
+
+- Pair password (hex string starting with `0x`)
+- Password issuance timestamp
+- Security reminder to keep password safe
+
+#### When to Use
+
+- When you need to view your password (e.g., for signing lock proofs)
+- When you need to create a password for a newly registered hotkey
+- When you've forgotten your password and need to retrieve it
+
+**Security Note:** Use `cartha miner status` for quick checks. Only use `cartha miner password` when you actually need to view or create your password.
+
+#### What It Does
+
+1. Loads your wallet and validates hotkey ownership
+2. Signs a challenge message with your hotkey to prove ownership
+3. Sends the signed challenge to the verifier
+4. Retrieves and displays the pair password
+5. If no password exists, prompts to create one
+
+---
+
+## Portfolio Commands
+
+### cartha portfolio lock
+
+Submit a lock proof for your USDC deposit to the verifier. This command handles the entire EIP-712 signing workflow, supporting both local signing (with your EVM private key) and external signing (MetaMask, hardware wallets, etc.).
+
+#### Usage
+
+```bash
+cartha portfolio lock [OPTIONS]
+# or
+cartha p lock [OPTIONS]
+```
+
+#### Options
 
 | Option | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -151,11 +283,11 @@ cartha prove-lock [OPTIONS]
 
 *Required unless `--payload-file` is provided
 
-### Examples
+#### Examples
 
 ```bash
 # Submit with all arguments (will prompt for signature if not provided)
-cartha prove-lock \
+cartha portfolio lock \
   --chain 8453 \
   --vault 0x1234567890123456789012345678901234567890 \
   --tx 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890 \
@@ -165,11 +297,15 @@ cartha prove-lock \
   --miner-evm 0x9876543210987654321098765432109876543210 \
   --pwd 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 
+# Using short alias
+cartha p lock --chain 8453 --vault 0xVAULT --tx 0xTXHASH --amount 250 \
+  --hotkey bt1... --slot 123 --miner-evm 0xEVM --pwd 0xPWD
+
 # Use payload file (from build_lock_proof.py)
-cartha prove-lock --payload-file testnet/outputs/lock_proof_payload.json
+cartha portfolio lock --payload-file testnet/outputs/lock_proof_payload.json
 
 # JSON output mode
-cartha prove-lock \
+cartha portfolio lock \
   --chain 8453 \
   --vault 0x1234... \
   --tx 0xabcd... \
@@ -181,7 +317,7 @@ cartha prove-lock \
   --json
 ```
 
-### Signing Options
+#### Signing Options
 
 If `--signature` is not provided, the CLI will prompt you to choose:
 
@@ -198,7 +334,7 @@ If `--signature` is not provided, the CLI will prompt you to choose:
 
 See [EIP-712 Signing Guide](EIP712_SIGNING.md) for detailed instructions.
 
-### What It Does
+#### What It Does
 
 1. Collects all required fields (chain, vault, tx, amount, hotkey, slot, password)
 2. Prompts for EIP-712 signature (or generates locally)
@@ -213,39 +349,61 @@ See [EIP-712 Signing Guide](EIP712_SIGNING.md) for detailed instructions.
 
 ---
 
-## cartha claim-deposit
+### cartha portfolio claim
 
-Alias for `prove-lock` designed for deposit-first workflows.
+Alias for `portfolio lock` designed for deposit-first workflows.
 
-### Usage
+#### Usage
 
 ```bash
-cartha claim-deposit [OPTIONS]
+cartha portfolio claim [OPTIONS]
+# or
+cartha p claim [OPTIONS]
 ```
 
-### Options
+#### Options
 
-Same as `cartha prove-lock`. See [cartha prove-lock](#cartha-prove-lock) for complete documentation.
+Same as `cartha portfolio lock`. See [cartha portfolio lock](#cartha-portfolio-lock) for complete documentation.
 
-### When to Use
+#### When to Use
 
-Use `claim-deposit` when you've already made your USDC deposit and want to claim it by submitting a lock proof. It's functionally identical to `prove-lock` but provides a more intuitive command name for this workflow.
+Use `claim` when you've already made your USDC deposit and want to claim it by submitting a lock proof. It's functionally identical to `lock` but provides a more intuitive command name for this workflow.
 
 ---
 
-## cartha version
+## Other Commands
+
+### cartha version
 
 Display the CLI version information.
 
-### Usage
+#### Usage
 
 ```bash
 cartha version
 ```
 
-### Output
+#### Output
 
 Displays the current version of the Cartha CLI.
+
+---
+
+### cartha pair status *(Legacy)*
+
+Legacy command for checking pair status. **Deprecated** - use `cartha miner status` instead for faster, unauthenticated status checks, or `cartha miner password` if you need to view the password.
+
+#### Usage
+
+```bash
+cartha pair status [OPTIONS]
+```
+
+#### Options
+
+Same as `cartha miner status`, but requires authentication. See [cartha miner status](#cartha-miner-status) for details.
+
+**Note:** This command is maintained for backward compatibility but is not recommended for new workflows.
 
 ---
 
@@ -289,18 +447,21 @@ CARTHA_NETUID=35
 
 1. **Register your hotkey:**
    ```bash
-   cartha register --wallet-name cold --wallet-hotkey hot
+   cartha miner register --wallet-name cold --wallet-hotkey hot
    ```
    Save the displayed pair password securely.
 
-2. **Check your pair status:**
+2. **Check your miner status:**
    ```bash
-   cartha pair status \
-     --wallet-name cold \
-     --wallet-hotkey hot \
-     --hotkey bt1... \
-     --slot 123
+   cartha miner status --wallet-name cold --wallet-hotkey hot
    ```
+   This shows your status without requiring authentication.
+
+3. **View your password when needed:**
+   ```bash
+   cartha miner password --wallet-name cold --wallet-hotkey hot
+   ```
+   Use this only when you need to view or create your password.
 
 ### Submitting a Lock Proof
 
@@ -308,7 +469,7 @@ CARTHA_NETUID=35
 
 2. **Submit the lock proof:**
    ```bash
-   cartha prove-lock \
+   cartha portfolio lock \
      --chain 8453 \
      --vault 0xVAULT \
      --tx 0xTXHASH \
@@ -321,19 +482,48 @@ CARTHA_NETUID=35
 
 3. The CLI will guide you through signing (local or external)
 
+### Checking Pool Status and Expiration
+
+1. **Quick status check (no authentication):**
+   ```bash
+   cartha miner status --wallet-name cold --wallet-hotkey hot
+   ```
+
+2. **View all your pools:**
+   - See all active pools in one table
+   - Check expiration dates with days remaining countdown
+   - Identify pools expiring soon (red/yellow warnings)
+   - View EVM addresses used for each pool
+
+3. **Monitor expiration:**
+   - Pools expiring in < 7 days show red warning
+   - Pools expiring in < 15 days show yellow warning
+   - Expired pools stop earning rewards automatically
+
 ### Extending Your Lock Period
 
 1. **Check your current lock status:**
    ```bash
-   cartha pair status \
-     --wallet-name cold \
-     --wallet-hotkey hot
+   cartha miner status --wallet-name cold --wallet-hotkey hot
    ```
 
 2. **Top-ups/extensions happen automatically on-chain** - no CLI action needed!
    - Make a top-up or extend transaction on the vault contract
    - The verifier automatically detects `LockUpdated` events
-   - Your updated amount/lock_days will be reflected in `pair status` within 30 seconds
+   - Your updated amount/lock_days will be reflected in `miner status` within 30 seconds
+
+### Multi-Pool Management
+
+1. **View all pools:**
+   ```bash
+   cartha miner status --wallet-name cold --wallet-hotkey hot
+   ```
+
+2. **Each pool is tracked separately:**
+   - Each pool has its own expiration date
+   - Expired pools stop earning rewards, others continue
+   - You can have multiple pools active simultaneously
+   - Each pool can use a different EVM address
 
 ### Using Payload Files
 
@@ -346,7 +536,7 @@ For testnet or automated workflows:
 
 2. **Submit using payload file:**
    ```bash
-   cartha prove-lock --payload-file testnet/outputs/lock_proof_payload.json
+   cartha portfolio lock --payload-file testnet/outputs/lock_proof_payload.json
    ```
 
 ---
@@ -363,7 +553,11 @@ export BITTENSOR_WALLET_PATH="/path/to/your/wallets"
 
 ### Pair Password Not Found
 
-If `pair status` shows no password, the CLI will prompt to generate one. Make sure your hotkey is registered and you have network access to the verifier.
+If `miner status` shows "Password issued: no", use `miner password` to create one:
+
+```bash
+cartha miner password --wallet-name cold --wallet-hotkey hot
+```
 
 ### Signature Generation Fails
 
@@ -377,7 +571,29 @@ If `pair status` shows no password, the CLI will prompt to generate one. Make su
 - Verify network connectivity
 - Check verifier status: `curl $CARTHA_VERIFIER_URL/health`
 
+### UID Auto-Fetch Fails
+
+If automatic UID fetching fails:
+
+1. Check network connectivity to Bittensor network
+2. Verify your hotkey is registered: `cartha miner status --no-auto-fetch-uid`
+3. Manually provide slot UID: `cartha miner status --slot 123`
+
+---
+
+## Command Comparison
+
+| Feature | `miner status` | `miner password` | `pair status` (legacy) |
+| --- | --- | --- | --- |
+| Authentication | ❌ Not required | ✅ Required | ✅ Required |
+| Speed | ⚡ Fast | 🐌 Slower | 🐌 Slower |
+| Password Display | ❌ Never | ✅ Yes | ✅ Yes |
+| Pool Information | ✅ Yes | ❌ No | ✅ Yes |
+| Expiration Warnings | ✅ Yes | ❌ No | ✅ Yes |
+| Recommended | ✅ Yes | ✅ When needed | ❌ Deprecated |
+
+**Recommendation:** Use `cartha miner status` for daily checks, and `cartha miner password` only when you need to view or create your password.
+
 ---
 
 For more help, see [Feedback & Support](FEEDBACK.md).
-

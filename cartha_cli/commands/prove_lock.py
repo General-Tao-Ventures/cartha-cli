@@ -31,7 +31,10 @@ from .prove_lock_helpers import (
     submit_lock_proof_payload,
 )
 from .prove_lock_payload import load_payload_file
-from .prove_lock_signing import collect_external_signature, generate_external_signing_files
+from .prove_lock_signing import (
+    collect_external_signature,
+    generate_external_signing_files,
+)
 
 
 def prove_lock(
@@ -115,6 +118,7 @@ def prove_lock(
         amount_base_units: int | None = None
 
         # Load payload file if provided
+        pool_id: str | None = None
         if payload_file is not None:
             (
                 chain,
@@ -128,6 +132,7 @@ def prove_lock(
                 password,
                 signature,
                 timestamp,
+                pool_id,
             ) = load_payload_file(
                 payload_file,
                 chain,
@@ -210,7 +215,15 @@ def prove_lock(
         # Collect all required fields
         chain, vault, tx, amount_base_units, hotkey, slot, password = (
             _collect_required_fields(
-                chain, vault, tx, amount, amount_base_units, hotkey, slot, password, auto_fetch_uid
+                chain,
+                vault,
+                tx,
+                amount,
+                amount_base_units,
+                hotkey,
+                slot,
+                password,
+                auto_fetch_uid,
             )
         )
 
@@ -234,7 +247,10 @@ def prove_lock(
                         private_key=private_key_for_signing,
                     )
                     derived_evm = Web3.to_checksum_address(derived_evm_str)
-                    if miner_evm is not None and miner_evm.lower() != derived_evm.lower():
+                    if (
+                        miner_evm is not None
+                        and miner_evm.lower() != derived_evm.lower()
+                    ):
                         console.print(
                             f"[yellow]Warning:[/] EVM address mismatch detected. "
                             f"Expected {miner_evm}, got {derived_evm}"
@@ -301,10 +317,13 @@ def prove_lock(
             password=password,
             signature=signature,
             timestamp=timestamp,
+            pool_id=pool_id,  # Include pool_id for verifier demo mode
         )
 
         # Show summary and confirm
-        _show_summary_and_confirm(payload, chain, vault, tx, hotkey, slot_id, miner_evm, json_output)
+        _show_summary_and_confirm(
+            payload, chain, vault, tx, hotkey, slot_id, miner_evm, json_output
+        )
 
         # Submit
         send_lock_proof(payload, json_output)
@@ -327,13 +346,9 @@ def prove_lock(
 
 def _collect_existing_signature() -> str:
     """Collect existing signature from user."""
-    console.print(
-        "\n[bold cyan]Please provide your signature and required fields:[/]"
-    )
+    console.print("\n[bold cyan]Please provide your signature and required fields:[/]")
     while True:
-        signature = typer.prompt(
-            "EIP-712 signature (0x...)", show_default=False
-        )
+        signature = typer.prompt("EIP-712 signature (0x...)", show_default=False)
         signature_normalized = normalize_hex(signature)
         if len(signature_normalized) == 132:
             return signature_normalized
@@ -376,9 +391,7 @@ def _prompt_timestamp(timestamp: int | None) -> int:
                 continue
             return timestamp
         except ValueError:
-            console.print(
-                "[bold red]Error:[/] Timestamp must be a valid integer"
-            )
+            console.print("[bold red]Error:[/] Timestamp must be a valid integer")
 
 
 def _collect_private_key(miner_evm: str | None) -> tuple[str, str]:
@@ -386,9 +399,7 @@ def _collect_private_key(miner_evm: str | None) -> tuple[str, str]:
     console.print("\n[bold cyan]Please provide your EVM private key:[/]")
     private_key_from_env = os.getenv("CARTHA_EVM_PK")
     if private_key_from_env:
-        console.print(
-            "[dim]Using CARTHA_EVM_PK from environment variable[/]"
-        )
+        console.print("[dim]Using CARTHA_EVM_PK from environment variable[/]")
     else:
         console.print(
             "[dim]Tip:[/] Set CARTHA_EVM_PK environment variable to avoid prompting"
@@ -440,9 +451,7 @@ def _collect_private_key(miner_evm: str | None) -> tuple[str, str]:
                     "[bold cyan]Is this your correct EVM address?[/]",
                     default=True,
                 ):
-                    console.print(
-                        "[bold yellow]Please use a different private key.[/]"
-                    )
+                    console.print("[bold yellow]Please use a different private key.[/]")
                     if private_key_from_env:
                         private_key_from_env = None
                     continue
@@ -451,9 +460,7 @@ def _collect_private_key(miner_evm: str | None) -> tuple[str, str]:
 
             return private_key_normalized, miner_evm
         except Exception as exc:
-            console.print(
-                f"[bold red]Error:[/] Failed to derive EVM address: {exc}"
-            )
+            console.print(f"[bold red]Error:[/] Failed to derive EVM address: {exc}")
             if private_key_from_env:
                 private_key_from_env = None
             continue
@@ -484,9 +491,7 @@ def _collect_required_fields(
                     continue
                 break
             except ValueError:
-                console.print(
-                    "[bold red]Error:[/] Chain ID must be a valid integer"
-                )
+                console.print("[bold red]Error:[/] Chain ID must be a valid integer")
 
     # Vault
     if vault is None:
@@ -568,7 +573,7 @@ def _collect_required_fields(
                     )
                     console.print(
                         "[yellow]You do not belong to any UID at the moment.[/] "
-                        "Please register your hotkey first using 'cartha register'."
+                        "Please register your hotkey first using 'cartha miner register'."
                     )
                     raise typer.Exit(code=0)
                 console.print(f"[bold green]Found UID: {slot}[/]")
@@ -593,7 +598,8 @@ def _collect_required_fields(
             )
             try:
                 slot_input = typer.prompt(
-                    "Enter your slot UID (from 'cartha register' output)", type=int
+                    "Enter your slot UID (from 'cartha miner register' output)",
+                    type=int,
                 )
                 slot = slot_input
                 console.print(f"[bold green]Using UID: {slot}[/]")
@@ -677,4 +683,3 @@ def _show_summary_and_confirm(
         else:
             console.print("[bold yellow]Submission cancelled.[/]")
         raise typer.Exit(code=0)
-

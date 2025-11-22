@@ -6,6 +6,7 @@ import json
 import os
 import random
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
+from datetime import datetime, timezone
 from pathlib import Path
 
 import typer
@@ -29,8 +30,8 @@ except ImportError as exc:
 app = typer.Typer(add_completion=False)
 console = Console()
 
-# Default output path relative to testnet folder
-OUTPUT_PATH = (Path(__file__).resolve().parent / "outputs" / "lock_proof_payload.json").resolve()
+# Default output directory relative to testnet folder
+OUTPUT_DIR = (Path(__file__).resolve().parent / "outputs").resolve()
 
 # Mock values for demo
 DEFAULT_CHAIN = 31337
@@ -131,8 +132,8 @@ def main(
     ),
     slot: str = typer.Option(None, "--slot", help="Miner slot UID. Required if not in env."),
     pwd: str = typer.Option(None, "--pwd", help="Pair password (0x...). Required if not in env."),
-    output: Path = typer.Option(  # noqa: B008
-        OUTPUT_PATH, "--output", help="Where to store the generated payload JSON."
+    output: Path | None = typer.Option(  # noqa: B008
+        None, "--output", help="Where to store the generated payload JSON. If not provided, auto-generates filename with timestamp."
     ),
 ) -> None:
     """Generate a LockProof payload with mock data for demo purposes.
@@ -167,8 +168,18 @@ def main(
 
     # Handle pool_id (accept readable names or hex)
     if pool_id is None:
-        pool_id = pool_name_to_id("USDEUR")
-        console.print(f"[dim]Using default pool:[/] [cyan]USDEUR[/] ({pool_id})")
+        # Randomize pool selection from available pools
+        available_pools_dict = list_pools()
+        if available_pools_dict:
+            # Get list of pool names (keys) and randomly select one
+            pool_names = list(available_pools_dict.keys())
+            random_pool_name = random.choice(pool_names)
+            pool_id = pool_name_to_id(random_pool_name)
+            console.print(f"[dim]Randomly selected pool:[/] [cyan]{random_pool_name}[/] ({pool_id})")
+        else:
+            # Fallback to USDEUR if no pools available
+            pool_id = pool_name_to_id("EURUSD")
+            console.print(f"[dim]Using default pool:[/] [cyan]EURUSD[/] ({pool_id})")
     else:
         # Check if it's a readable name first
         pool_id_upper = pool_id.upper()
@@ -284,7 +295,11 @@ def main(
     signature_normalized = "0x" + sig_hex
 
     # Prepare payload (lockDays removed - always read from on-chain event)
-    # Note: pool_id is stored here for reference but not sent to verifier
+    # Note: pool_id is used by verifier in demo mode (DEMO_SKIP_LOCKPROOF=1)
+    # Create identifier name from hotkey and slot for easy tracking
+    hotkey_short = hotkey[:8] + "..." + hotkey[-4:] if len(hotkey) > 12 else hotkey
+    payload_name = f"{hotkey_short}_slot{slot}"
+    
     payload = {
         "chain": chain,
         "vault": vault,
@@ -297,12 +312,24 @@ def main(
         "password": password,
         "timestamp": timestamp,
         "signature": signature_normalized,
-        # Metadata for reference (not sent to verifier):
+        # pool_id is used by verifier in demo mode (DEMO_SKIP_LOCKPROOF=1)
+        "pool_id": pool_id,
+        # Metadata for reference:
         "_demo_pool_id": pool_id,
+        "_name": payload_name,
     }
 
+    # Generate output filename with timestamp if not provided
+    if output is None:
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        safe_hotkey = hotkey_short.replace("...", "_").replace(".", "_")
+        filename = f"lock_proof_{safe_hotkey}_slot{slot}_{timestamp_str}.json"
+        output = OUTPUT_DIR / filename
+    else:
+        # Ensure output directory exists
+        output.parent.mkdir(parents=True, exist_ok=True)
+
     # Save to file
-    output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2))
 
     console.print(f"\n[bold green]✓ Saved[/] payload to [yellow]{output}[/]")
@@ -315,10 +342,11 @@ def main(
         )
     
     console.print("\n[bold cyan]Command to submit lock proof:[/]\n")
-    console.print(f"[green]uv run cartha prove-lock --payload-file {output}[/]")
+    console.print(f"[green]uv run cartha portfolio lock --payload-file {output}[/]")
+    console.print(f"[dim]Or use short alias:[/] [green]uv run cartha p lock --payload-file {output}[/]")
     console.print("\n[dim]Or manually with all parameters:[/]\n")
     console.print(
-        f"[green]uv run cartha prove-lock \\\n"
+        f"[green]uv run cartha portfolio lock \\\n"
         f"  --chain {chain} \\\n"
         f"  --vault {vault} \\\n"
         f"  --tx {tx_hash} \\\n"
@@ -335,7 +363,7 @@ def main(
     )
     pool_display = format_pool_id(pool_id)
     console.print(
-        f"\n[dim]Note:[/] Pool ID: {pool_display} (stored in payload metadata for reference)"
+        f"\n[dim]Note:[/] Pool ID: {pool_display} (used by verifier in demo mode)"
     )
     console.print(
         "\n[dim]Note:[/] lockDays is read from on-chain event (set DEMO_LOCK_DAYS in verifier for demo mode)"

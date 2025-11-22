@@ -31,6 +31,7 @@ def submit_lock_proof_payload(
     password: str,
     signature: str,
     timestamp: int | None = None,
+    pool_id: str | None = None,
 ) -> dict[str, Any]:
     """Create and validate a lock proof payload."""
     if amount <= 0:
@@ -55,7 +56,7 @@ def submit_lock_proof_payload(
     if timestamp is None:
         timestamp = int(time.time())
 
-    return {
+    payload = {
         "vaultAddress": Web3.to_checksum_address(vault),
         "minerEvmAddress": Web3.to_checksum_address(miner_evm),
         "minerHotkey": hotkey,
@@ -67,6 +68,10 @@ def submit_lock_proof_payload(
         "timestamp": timestamp,
         "signature": signature,
     }
+    # Include pool_id if provided (used by verifier in demo mode)
+    if pool_id is not None:
+        payload["pool_id"] = pool_id
+    return payload
 
 
 def generate_eip712_signature(

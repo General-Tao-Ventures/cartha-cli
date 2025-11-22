@@ -1,17 +1,14 @@
-"""Pair status command."""
+"""Miner password command - shows password with authentication."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 import bittensor as bt
 import typer
 from rich.json import JSON
-from rich.table import Table
 
 from ..config import settings
-from ..display import display_clock_and_countdown
 from ..pair import (
     build_pair_auth_payload,
     get_uid_from_hotkey,
@@ -26,25 +23,8 @@ from .common import (
     handle_wallet_exception,
 )
 
-# Import pool name helper
-try:
-    from ...testnet.pool_ids import pool_id_to_name
-except ImportError:
-    # Fallback if running from different context
-    def pool_id_to_name(pool_id: str) -> str | None:
-        """Simple fallback to decode pool ID."""
-        try:
-            hex_str = pool_id.lower().removeprefix("0x")
-            pool_bytes = bytes.fromhex(hex_str)
-            name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-            if name and name.isprintable():
-                return name
-        except Exception:
-            pass
-        return None
 
-
-def pair_status(
+def miner_password(
     wallet_name: str = typer.Option(
         ...,
         "--wallet-name",
@@ -70,7 +50,8 @@ def pair_status(
     auto_fetch_uid: bool = typer.Option(
         True,
         "--auto-fetch-uid/--no-auto-fetch-uid",
-        help="Automatically fetch UID from Bittensor network (default: enabled). Use --no-auto-fetch-uid to prompt for UID.",
+        help="Automatically fetch UID from Bittensor network (default: enabled).",
+        show_default=False,
     ),
     network: str = typer.Option(
         settings.network, "--network", help="Bittensor network name."
@@ -80,22 +61,10 @@ def pair_status(
         False, "--json", help="Emit the raw JSON response."
     ),
 ) -> None:
-    """Show the verifier state for a miner pair.
+    """Show your miner password (requires authentication).
 
-    State Legend:
-    ════════════════════════════════════════════════════════════════
-
-    1. active   - In current frozen epoch, earning rewards
-
-    2. verified - Has lock proof, not in current active epoch
-
-    3. pending  - Registered, no lock proof submitted yet
-
-    4. revoked  - Revoked (deregistered or evicted)
-
-    5. unknown  - No pair record found
-
-    ════════════════════════════════════════════════════════════════
+    This command requires signing a challenge message to prove ownership.
+    If no password exists, you'll be prompted to create one.
     """
     try:
         console.print("[bold cyan]Loading wallet...[/]")
@@ -105,7 +74,6 @@ def pair_status(
         # Fetch UID automatically by default, prompt if disabled
         if slot is None:
             if auto_fetch_uid:
-                # Auto-fetch enabled (default) - try to fetch from network
                 console.print("[bold cyan]Fetching UID from subnet...[/]")
                 try:
                     slot = get_uid_from_hotkey(
@@ -137,7 +105,6 @@ def pair_status(
                         console.print("[bold red]Invalid UID or cancelled.[/]")
                         raise typer.Exit(code=1) from exc
             else:
-                # Auto-fetch disabled (--no-auto-fetch-uid) - prompt for UID
                 console.print(
                     "[bold cyan]UID not provided.[/] "
                     "[yellow]Auto-fetch disabled. Enter UID manually.[/]"
@@ -154,8 +121,6 @@ def pair_status(
                     raise typer.Exit(code=1)
 
         slot_id = str(slot)
-        # Skip metagraph check - verifier will validate the pair anyway
-        # This avoids slow metagraph() calls that cause timeouts
 
         console.print("[bold cyan]Signing hotkey ownership challenge...[/]")
         auth_payload = build_pair_auth_payload(
@@ -185,22 +150,17 @@ def pair_status(
     except typer.Exit:
         raise
     except VerifierError as exc:
-        # VerifierError is already handled in _request_pair_status_or_password
-        # But if it somehow reaches here, handle it
         error_msg = str(exc)
         if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
             console.print(f"[bold red]Request timed out[/]")
-            # Print the full error message (may be multi-line)
             console.print(f"[yellow]{error_msg}[/]")
         else:
             console.print(f"[bold red]Verifier request failed[/]: {exc}")
         raise typer.Exit(code=1) from exc
     except Exception as exc:
-        # Check if it's a timeout-related error (even if wrapped)
         error_msg = str(exc)
         error_type = type(exc).__name__
 
-        # Check for timeout indicators in the exception
         is_timeout = (
             "timed out" in error_msg.lower()
             or "timeout" in error_msg.lower()
@@ -225,7 +185,7 @@ def pair_status(
             )
             raise typer.Exit(code=1) from exc
 
-        handle_unexpected_exception("Unable to fetch pair status", exc)
+        handle_unexpected_exception("Unable to fetch password", exc)
 
     initial_status = dict(status)
     password_payload: dict[str, Any] | None = None
@@ -270,7 +230,7 @@ def pair_status(
             message = str(exc)
             if exc.status_code == 504 or "timeout" in message.lower():
                 console.print(
-                    "[bold yellow]Password generation timed out[/]: run 'cartha pair status' again in ~1 minute."
+                    "[bold yellow]Password generation timed out[/]: run 'cartha miner password' again in ~1 minute."
                 )
             else:
                 console.print(f"[bold red]Password generation failed[/]: {message}")
@@ -286,7 +246,7 @@ def pair_status(
 
         try:
             with console.status(
-                "[bold cyan]Refreshing verifier status...[/]",
+                "[bold cyan]Refreshing password...[/]",
                 spinner="dots",
             ):
                 status = request_pair_status_or_password(
@@ -298,7 +258,7 @@ def pair_status(
                     auth_payload=auth_payload,
                 )
         except VerifierError as exc:
-            console.print(f"[bold yellow]Unable to refresh pair status[/]: {exc}")
+            console.print(f"[bold yellow]Unable to refresh password[/]: {exc}")
             status = initial_status
             if state == "unknown":
                 status["state"] = "pending"
@@ -311,9 +271,8 @@ def pair_status(
 
     sanitized = dict(status)
     sanitized.setdefault("state", "unknown")
-    sanitized["hotkey"] = hotkey
-    sanitized["slot"] = slot_id
     password = sanitized.get("pwd")
+    issued_at = sanitized.get("issued_at")
 
     if json_output:
         console.print(JSON.from_data(sanitized))
@@ -323,215 +282,44 @@ def pair_status(
             )
         return
 
-    # Display clock and countdown
-    display_clock_and_countdown()
+    # Display password information
+    from rich.table import Table
+    from datetime import datetime
 
-    table = Table(title="Pair Status", show_header=False)
+    table = Table(title="Miner Password", show_header=False)
     table.add_row("Hotkey", hotkey)
     table.add_row("Slot UID", slot_id)
-    table.add_row("State", sanitized["state"])
-
-    # Show lock amounts for verified/active states
-    state = sanitized.get("state", "").lower()
-    if state in ("verified", "active"):
-        # Show EVM addresses used (only if single address, otherwise shown in pools table)
-        evm_addresses = sanitized.get("miner_evm_addresses")
-        if evm_addresses and len(evm_addresses) == 1:
-            table.add_row("EVM address", evm_addresses[0])
-
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
-    issued_at = sanitized.get("issued_at")
+
     if issued_at:
-        # Try to parse and format the timestamp
         try:
             if isinstance(issued_at, (int, float)) or (
                 isinstance(issued_at, str) and issued_at.isdigit()
             ):
-                # Numeric timestamp
                 formatted_time = format_timestamp(issued_at)
             elif isinstance(issued_at, str):
-                # Try parsing as ISO format datetime string
                 try:
                     dt = datetime.fromisoformat(issued_at.replace("Z", "+00:00"))
                     timestamp = dt.timestamp()
                     formatted_time = format_timestamp(timestamp)
                 except (ValueError, AttributeError):
-                    # If parsing fails, display as-is
                     formatted_time = issued_at
             else:
                 formatted_time = str(issued_at)
             table.add_row("Password issued at", formatted_time)
         except Exception:
             table.add_row("Password issued at", str(issued_at))
+
     if password:
         table.add_row("Pair password", password)
+
     console.print(table)
 
-    # Show warnings and reminders
+    # Show password warning
     if password:
         console.print()
         console.print(
             "[bold yellow]🔐 Keep your password safe[/] — Exposure might allow others to steal your locked USDC rewards."
         )
 
-    # Show detailed status information for verified/active pairs
-    if state in ("verified", "active"):
-        pools = sanitized.get("pools", [])
-        in_upcoming_epoch = sanitized.get("in_upcoming_epoch")
-        expires_at = sanitized.get("expires_at")
-
-        # Display per-pool table (primary display for lock information)
-        if pools:
-            console.print()
-            console.print("[bold cyan]━━━ Active Pools ━━━[/]")
-
-            pool_table = Table(show_header=True, header_style="bold cyan")
-            pool_table.add_column("Pool Name", style="cyan", no_wrap=True)
-            pool_table.add_column("Amount Locked", style="green", justify="right")
-            pool_table.add_column("Lock Days", justify="center")
-            pool_table.add_column("Expires At", style="yellow")
-            pool_table.add_column("Status", justify="center")
-            pool_table.add_column("EVM Address", style="dim")
-
-            for pool in pools:
-                # Format pool name - use human-readable name if available
-                pool_name = pool.get("pool_name")
-                if not pool_name:
-                    # Fallback to pool_id if name not available
-                    pool_id = pool.get("pool_id", "")
-                    if pool_id:
-                        # Try to convert pool_id to name
-                        pool_name = pool_id_to_name(pool_id) or pool_id[:10] + "..."
-                    else:
-                        pool_name = "Unknown"
-                pool_display = pool_name
-
-                # Format amount locked
-                amount_usdc = pool.get("amount_usdc", 0)
-                amount_str = f"{amount_usdc:.2f}"
-
-                # Format lock days
-                lock_days = pool.get("lock_days", 0)
-                lock_days_str = str(lock_days)
-
-                # Format expiration
-                pool_expires_at = pool.get("expires_at")
-                expires_str = "N/A"
-                if pool_expires_at:
-                    try:
-                        if isinstance(pool_expires_at, str):
-                            exp_dt = datetime.fromisoformat(
-                                pool_expires_at.replace("Z", "+00:00")
-                            )
-                        elif isinstance(pool_expires_at, datetime):
-                            exp_dt = pool_expires_at
-                        else:
-                            exp_dt = None
-                        if exp_dt:
-                            expires_str = format_timestamp(exp_dt.timestamp())
-                    except Exception:
-                        expires_str = str(pool_expires_at)
-
-                # Format status - show which pools are active, verified, and included in next epoch
-                is_active = pool.get("is_active", False)
-                is_verified = pool.get("is_verified", False)
-                pool_in_upcoming = pool.get("in_upcoming_epoch", False)
-
-                status_parts = []
-                if is_active:
-                    status_parts.append("[green]Active[/]")
-                if is_verified:
-                    status_parts.append("[cyan]Verified[/]")
-                if pool_in_upcoming:
-                    status_parts.append("[bold green]In Next Epoch[/]")
-                if not status_parts:
-                    status_parts.append("[dim]None[/]")
-
-                status_str = " / ".join(status_parts)
-
-                # EVM address (full address for clarity)
-                evm_addr = pool.get("evm_address", "")
-                evm_display = (
-                    evm_addr
-                    if len(evm_addr) <= 42
-                    else (evm_addr[:20] + "..." + evm_addr[-6:])
-                )
-
-                pool_table.add_row(
-                    pool_display,
-                    f"{amount_str} USDC",
-                    lock_days_str,
-                    expires_str,
-                    status_str,
-                    evm_display,
-                )
-
-            console.print(pool_table)
-
-        console.print()
-        console.print("[bold cyan]━━━ Epoch Status ━━━[/]")
-
-        # Upcoming epoch inclusion status
-        if in_upcoming_epoch:
-            console.print(
-                "[bold green]✓ Included in upcoming epoch[/] — You will receive rewards for the next epoch."
-            )
-        elif in_upcoming_epoch is False:
-            console.print(
-                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha portfolio lock[/] to be included."
-            )
-
-        # Expiration date information and warnings (aggregated)
-        if expires_at:
-            try:
-                # Parse expiration datetime
-                if isinstance(expires_at, str):
-                    exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
-                elif isinstance(expires_at, datetime):
-                    exp_dt = expires_at
-                else:
-                    exp_dt = None
-
-                if exp_dt:
-                    now = datetime.now(UTC)
-                    time_until_expiry = (exp_dt - now).total_seconds()
-                    days_until_expiry = time_until_expiry / 86400
-
-                    console.print()
-                    console.print("[bold cyan]━━━ Lock Expiration ━━━[/]")
-
-                    if days_until_expiry < 0:
-                        console.print(
-                            "[bold red]⚠ EXPIRED[/] — Some locks expired. USDC will be returned. No more emissions for expired pools."
-                        )
-                    elif days_until_expiry <= 7:
-                        console.print(
-                            f"[bold red]⚠ Expiring in {days_until_expiry:.1f} days[/] — Make a new lock transaction on-chain to continue receiving emissions."
-                        )
-                    elif days_until_expiry <= 30:
-                        console.print(
-                            f"[bold yellow]⚠ Expiring in {days_until_expiry:.0f} days[/] — Consider making a new lock transaction on-chain soon."
-                        )
-                    else:
-                        console.print(
-                            f"[bold green]✓ Valid for {days_until_expiry:.0f} days[/]"
-                        )
-            except Exception:
-                pass
-
-        # Concise reminder
-        console.print()
-        console.print("[bold cyan]━━━ Reminders ━━━[/]")
-        console.print(
-            "• Lock expiration: USDC returned automatically, emissions stop for that pool."
-        )
-        console.print(
-            "• Top-ups/extensions: Happen automatically on-chain. No CLI action needed."
-        )
-        if pools and len(pools) > 1:
-            console.print(
-                "• Multiple pools: Each pool is tracked separately. Expired pools stop earning, others continue."
-            )
-
-    # Explicitly return to ensure clean exit
     return

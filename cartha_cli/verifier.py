@@ -107,6 +107,19 @@ def _request(
     return data
 
 
+def fetch_miner_status(
+    *,
+    hotkey: str,
+    slot: str,
+) -> dict[str, Any]:
+    """Return miner status without authentication (public endpoint)."""
+    return _request(
+        "GET",
+        "/v1/miner/status",
+        params={"hotkey": hotkey, "slot": slot},
+    )
+
+
 def fetch_pair_status(
     *,
     hotkey: str,

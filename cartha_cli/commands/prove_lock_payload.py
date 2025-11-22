@@ -37,6 +37,7 @@ def load_payload_file(
     str | None,
     str | None,
     int | None,
+    str | None,  # pool_id
 ]:
     """Load and validate payload from file, overriding with CLI args if provided.
 
@@ -172,6 +173,9 @@ def load_payload_file(
         timestamp if timestamp is not None else payload_data.get("timestamp")
     )
 
+    # Extract pool_id from payload file (used by verifier in demo mode)
+    pool_id = payload_data.get("pool_id") or payload_data.get("_demo_pool_id")
+
     # Validate that all required fields are present
     missing_fields = []
     if chain is None:
@@ -216,5 +220,6 @@ def load_payload_file(
         password,
         signature,
         timestamp,
+        pool_id,  # Return pool_id for use in demo mode
     )
 
