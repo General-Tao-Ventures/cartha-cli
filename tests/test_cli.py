@@ -163,7 +163,6 @@ def test_register_command_success(monkeypatch):
         app,
         [
             "miner",
-            "miner",
             "register",
             "--wallet-name",
             "cold",
@@ -424,23 +423,30 @@ def test_register_command_trace_unexpected(monkeypatch):
 
 
 def test_pair_status_command(monkeypatch):
-    def fake_auth_payload(**kwargs):
-        return {"message": "msg", "signature": "0xdead", "expires_at": 0}
-
-    def fake_request(**kwargs):
-        assert kwargs["mode"] == "status"
+    def fake_fetch_miner_status(**kwargs):
         return {
             "state": "active",
             "has_pwd": True,
-            "pwd": "0x" + "22" * 32,
             "issued_at": "2024-05-20T12:00:00Z",
+            "pools": [
+                {
+                    "pool_name": "EURUSD",
+                    "amount_usdc": 1000.0,
+                    "lock_days": 30,
+                    "expires_at": "2024-06-20T12:00:00Z",
+                    "is_active": True,
+                    "is_verified": True,
+                    "in_upcoming_epoch": True,
+                    "evm_address": "0x1111111111111111111111111111111111111111",
+                }
+            ],
         }
 
     class DummyWallet:
         def __init__(self, ss58: str) -> None:
             self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
 
-    # Patch bt.wallet and bt.subtensor for build_pair_auth_payload and load_wallet
+    # Patch bt.wallet and bt.subtensor for load_wallet
     import bittensor as bt
 
     monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
@@ -458,20 +464,15 @@ def test_pair_status_command(monkeypatch):
         )(),
     )
 
-    # Patch build_pair_auth_payload in both pair and main modules
+    # Patch fetch_miner_status (public endpoint, no auth required)
     monkeypatch.setattr(
-        "cartha_cli.commands.pair_status.build_pair_auth_payload", fake_auth_payload
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
     )
-    monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr(
-        "cartha_cli.commands.pair_status.request_pair_status_or_password", fake_request
-    )
-    monkeypatch.setattr("cartha_cli.pair.request_pair_status_or_password", fake_request)
+    monkeypatch.setattr("cartha_cli.verifier.fetch_miner_status", fake_fetch_miner_status)
     monkeypatch.setattr(
         "cartha_cli.wallet.load_wallet",
         lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
     )
-    monkeypatch.setattr("cartha_cli.pair.ensure_pair_registered", lambda **kwargs: None)
     # Patch get_uid_from_hotkey to return the slot from the test
     monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
 
@@ -494,28 +495,25 @@ def test_pair_status_command(monkeypatch):
     assert "active" in result.stdout
     assert "Password issued" in result.stdout
     assert "yes" in result.stdout
-    assert "Pair password" in result.stdout
-    assert "0x22" in result.stdout
-    assert "password safe" in result.stdout
+    # Password should NOT be shown in miner status (only in miner password)
+    assert "Pair password" not in result.stdout
+    assert "0x22" not in result.stdout
 
 
 def test_pair_status_command_json(monkeypatch):
-    def fake_auth_payload(**kwargs):
-        return {"message": "msg", "signature": "0xdead", "expires_at": 0}
-
-    def fake_request(**kwargs):
+    def fake_fetch_miner_status(**kwargs):
         return {
             "state": "pending",
             "has_pwd": False,
-            "pwd": "0x" + "33" * 32,
             "issued_at": None,
+            "pools": None,
         }
 
     class DummyWallet:
         def __init__(self, ss58: str) -> None:
             self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
 
-    # Patch bt.wallet and bt.subtensor for build_pair_auth_payload and load_wallet
+    # Patch bt.wallet and bt.subtensor for load_wallet
     import bittensor as bt
 
     monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
@@ -533,22 +531,17 @@ def test_pair_status_command_json(monkeypatch):
         )(),
     )
 
-    # Patch build_pair_auth_payload in both pair and main modules
+    # Patch fetch_miner_status (public endpoint, no auth required)
     monkeypatch.setattr(
-        "cartha_cli.commands.pair_status.build_pair_auth_payload", fake_auth_payload
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
     )
-    monkeypatch.setattr("cartha_cli.pair.build_pair_auth_payload", fake_auth_payload)
-    monkeypatch.setattr(
-        "cartha_cli.commands.pair_status.request_pair_status_or_password", fake_request
-    )
-    monkeypatch.setattr("cartha_cli.pair.request_pair_status_or_password", fake_request)
+    monkeypatch.setattr("cartha_cli.verifier.fetch_miner_status", fake_fetch_miner_status)
     monkeypatch.setattr(
         "cartha_cli.wallet.load_wallet",
         lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
     )
-    monkeypatch.setattr("cartha_cli.pair.ensure_pair_registered", lambda **kwargs: None)
     # Patch get_uid_from_hotkey to return the slot from the test
-    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 7)
 
     result = runner.invoke(
         app,
@@ -568,12 +561,15 @@ def test_pair_status_command_json(monkeypatch):
     stdout = result.stdout
     json_start = stdout.find("{")
     json_end = stdout.find("}\n", json_start)
+    if json_end == -1:
+        # Try finding the end of JSON more carefully
+        json_end = stdout.rfind("}")
     payload = json.loads(stdout[json_start : json_end + 1])
     assert payload["state"] == "pending"
     assert payload["hotkey"] == "bt1xyz"
     assert payload["slot"] == "7"
-    assert payload["pwd"] == "0x" + "33" * 32
-    assert "Keep it safe" in stdout
+    # Password should NOT be in miner status response (only in miner password)
+    assert "pwd" not in payload or payload.get("pwd") is None
 
 
 def test_prove_lock_command_success(monkeypatch):
