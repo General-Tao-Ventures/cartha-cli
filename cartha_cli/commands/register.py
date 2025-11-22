@@ -228,11 +228,11 @@ def register(
                     message = str(exc)
                     if exc.status_code == 504 or "timeout" in message.lower():
                         console.print(
-                            "[bold yellow]Password generation timed out[/]: run 'cartha pair status' in ~1 minute to check once the verifier completes."
+                            "[bold yellow]Password generation timed out[/]: run 'cartha miner status' in ~1 minute to check once the verifier completes."
                         )
                     else:
                         console.print(
-                            f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha pair status' later to confirm."
+                            f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha miner status' later to confirm."
                         )
                     return
         except typer.Exit:
@@ -253,7 +253,7 @@ def register(
         else:
             console.print(
                 "[bold yellow]Verifier did not return a pair password[/]. "
-                "Run 'cartha pair status' to check availability."
+                "Run 'cartha miner status' to check availability."
             )
     else:
         console.print(

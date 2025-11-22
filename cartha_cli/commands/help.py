@@ -26,23 +26,45 @@ def print_root_help() -> None:
     console.print()
 
     commands = Table(title="Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
+    commands.add_row("[green]help[/]", "Show this help message.")
     commands.add_row("[green]version[/]", "Show CLI version.")
     commands.add_row(
-        "[green]register[/]", "Register a hotkey and fetch the pair password."
+        "[green]miner[/] [dim](or [green]m[/])[/]", "Miner management commands."
     )
     commands.add_row(
-        "[green]pair status[/]", "Sign a challenge and display pair metadata."
-    )
-    commands.add_row(
-        "[green]prove-lock[/]", "Submit an externally signed LockProof payload."
-    )
-    commands.add_row(
-        "[green]extend-lock[/]", "Extend lock period by submitting new lock proof with updated lock days."
-    )
-    commands.add_row(
-        "[green]claim-deposit[/]", "Alias for prove-lock (deposit-first flow)."
+        "[green]portfolio[/] [dim](or [green]p[/])[/]", "Portfolio management commands."
     )
     console.print(commands)
+    console.print()
+
+    # Show miner subcommands
+    miner_commands = Table(
+        title="Miner Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
+    )
+    miner_commands.add_row(
+        "[green]miner status[/]",
+        "Show miner status and pool information (no password).",
+    )
+    miner_commands.add_row(
+        "[green]miner password[/]", "Show miner password (requires authentication)."
+    )
+    miner_commands.add_row(
+        "[green]miner register[/]", "Register a hotkey on the subnet."
+    )
+    console.print(miner_commands)
+    console.print()
+
+    # Show portfolio subcommands
+    portfolio_commands = Table(
+        title="Portfolio Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
+    )
+    portfolio_commands.add_row(
+        "[green]portfolio lock[/]", "Submit a LockProof payload to lock funds."
+    )
+    portfolio_commands.add_row(
+        "[green]portfolio claim[/]", "Alias for lock (deposit-first flow)."
+    )
+    console.print(portfolio_commands)
     console.print()
 
     # Display clock and countdown in a separate table
@@ -51,4 +73,3 @@ def print_root_help() -> None:
     console.print()
 
     console.print("[dim]Made with ❤ by GTV[/]")
-

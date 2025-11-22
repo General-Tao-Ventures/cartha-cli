@@ -2,6 +2,8 @@
 
 This guide explains how to sign EIP-712 LockProof messages for the Cartha subnet. Miners must sign a LockProof message to link their EVM wallet deposits to their Bittensor hotkey.
 
+**Important:** `lockDays` is NOT included in the LockProof schema—it is always read from the on-chain `LockCreated` event emitted by the vault contract.
+
 ## What is EIP-712?
 
 EIP-712 is a standard for signing structured data (typed data) in Ethereum. Instead of signing raw bytes, EIP-712 allows wallets to display human-readable information about what you're signing, making it safer and more user-friendly.

@@ -107,6 +107,19 @@ def _request(
     return data
 
 
+def fetch_miner_status(
+    *,
+    hotkey: str,
+    slot: str,
+) -> dict[str, Any]:
+    """Return miner status without authentication (public endpoint)."""
+    return _request(
+        "GET",
+        "/v1/miner/status",
+        params={"hotkey": hotkey, "slot": slot},
+    )
+
+
 def fetch_pair_status(
     *,
     hotkey: str,
@@ -190,40 +203,8 @@ def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def extend_lock(
-    *,
-    hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    message: str,
-    signature: str,
-    lock_days: int,
-) -> dict[str, Any]:
-    """Extend lock period by updating lock_days for existing lock proof.
-    
-    Simplified to only require Bittensor signature for hotkey ownership.
-    All lock proof details are retrieved from the database.
-    """
-    payload = {
-        "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": message,
-        "signature": signature,
-        "lockDays": lock_days,
-    }
-    return _request(
-        "POST",
-        "/v1/pair/extend-lock",
-        json_data=payload,
-    )
-
-
 __all__ = [
     "VerifierError",
-    "extend_lock",
     "fetch_pair_status",
     "fetch_pair_password",
     "register_pair_password",
