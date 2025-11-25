@@ -303,11 +303,11 @@ def main(
         )
     
     console.print("\n[bold cyan]Command to submit lock proof:[/]\n")
-    console.print(f"[green]uv run cartha portfolio lock --payload-file {output}[/]")
-    console.print(f"[dim]Or use short alias:[/] [green]uv run cartha p lock --payload-file {output}[/]")
+    console.print(f"[green]uv run cartha vault lock --payload-file {output}[/]")
+    console.print(f"[dim]Or use short alias:[/] [green]uv run cartha v lock --payload-file {output}[/]")
     console.print("\n[dim]Or manually with all parameters:[/]\n")
     console.print(
-        f"[green]uv run cartha portfolio lock \\\n"
+        f"[green]uv run cartha vault lock \\\n"
         f"  --chain {chain} \\\n"
         f"  --vault {vault} \\\n"
         f"  --tx {tx_hash} \\\n"

@@ -478,7 +478,7 @@ def pair_status(
             )
         elif in_upcoming_epoch is False:
             console.print(
-                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha portfolio lock[/] to be included."
+                "[bold yellow]⚠ Not included in upcoming epoch[/] — Use [bold]cartha vault lock[/] to be included."
             )
 
         # Expiration date information and warnings (aggregated)

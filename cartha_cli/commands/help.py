@@ -32,7 +32,7 @@ def print_root_help() -> None:
         "[green]miner[/] [dim](or [green]m[/])[/]", "Miner management commands."
     )
     commands.add_row(
-        "[green]portfolio[/] [dim](or [green]p[/])[/]", "Portfolio management commands."
+        "[green]vault[/] [dim](or [green]v[/])[/]", "Vault management commands."
     )
     console.print(commands)
     console.print()
@@ -54,17 +54,17 @@ def print_root_help() -> None:
     console.print(miner_commands)
     console.print()
 
-    # Show portfolio subcommands
-    portfolio_commands = Table(
-        title="Portfolio Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
+    # Show vault subcommands
+    vault_commands = Table(
+        title="Vault Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
     )
-    portfolio_commands.add_row(
-        "[green]portfolio lock[/]", "Submit a LockProof payload to lock funds."
+    vault_commands.add_row(
+        "[green]vault lock[/]", "Submit a LockProof payload to lock funds."
     )
-    portfolio_commands.add_row(
-        "[green]portfolio claim[/]", "Alias for lock (deposit-first flow)."
+    vault_commands.add_row(
+        "[green]vault claim[/]", "Alias for lock (deposit-first flow)."
     )
-    console.print(portfolio_commands)
+    console.print(vault_commands)
     console.print()
 
     # Display clock and countdown in a separate table
