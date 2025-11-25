@@ -62,15 +62,19 @@ def submit_lock_proof_payload(
         "minerHotkey": hotkey,
         "slotUID": slot,
         "chainId": chain,
-        "txHash": tx_hash.lower(),
+        "txHash": tx_hash.lower(),  # Normalize to lowercase for consistency with verifier
         "amount": amount,
-        "pwd": password,
+        "pwd": password.lower() if isinstance(password, str) else password,  # Normalize to lowercase for consistency with verifier
         "timestamp": timestamp,
         "signature": signature,
     }
     # Include pool_id if provided (used by verifier in demo mode)
+    # NOTE: pool_id is NOT part of the EIP-712 signature - it's only metadata
+    # sent to the verifier. The signature was already generated without pool_id.
+    # Normalize to lowercase for consistency with verifier
     if pool_id is not None:
-        payload["pool_id"] = pool_id
+        pool_id_normalized = pool_id.lower().strip()
+        payload["pool_id"] = pool_id_normalized
     return payload
 
 
@@ -114,8 +118,8 @@ def generate_eip712_signature(
     account = Account.from_key(private_key_normalized)
     miner_evm_address = Web3.to_checksum_address(account.address)
 
-    # Normalize password
-    password_normalized = normalize_hex(password)
+    # Normalize password (lowercase for consistency with verifier)
+    password_normalized = normalize_hex(password.lower())
     if len(password_normalized) != 66:  # 0x + 64 hex chars = 32 bytes
         exit_with_error("Password must be 32 bytes (0x + 64 hex characters)")
 

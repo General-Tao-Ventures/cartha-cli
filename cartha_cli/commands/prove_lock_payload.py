@@ -174,7 +174,10 @@ def load_payload_file(
     )
 
     # Extract pool_id from payload file (used by verifier in demo mode)
+    # Normalize to lowercase for consistency with verifier
     pool_id = payload_data.get("pool_id") or payload_data.get("_demo_pool_id")
+    if pool_id is not None:
+        pool_id = str(pool_id).lower().strip()
 
     # Validate that all required fields are present
     missing_fields = []

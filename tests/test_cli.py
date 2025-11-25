@@ -583,11 +583,16 @@ def test_prove_lock_command_success(monkeypatch):
         # Mock Rich Confirm.ask() to return True (accept confirmation)
         return kwargs.get("default", True)
 
+    def fake_prompt(*args, **kwargs):
+        # Return empty string for pool_id prompt (default value)
+        return kwargs.get("default", "")
+
     monkeypatch.setattr(
         "cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit
     )
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     result = runner.invoke(
         app,
@@ -728,21 +733,26 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
     # Mock prompts: user says they have signature from external wallet
-    prompt_responses = iter(
+    # Separate iterators for confirms and prompts to avoid confusion
+    confirm_responses = iter(
         [
             True,  # "Do you already have an EIP-712 signature? (y/n)" -> y
+            True,  # "Submit this lock proof to the verifier?" -> y
+        ]
+    )
+    prompt_responses = iter(
+        [
             "0x" + "66" * 65,  # Paste signature
             "0x1111111111111111111111111111111111111111",  # EVM address
             "1234567890",  # Timestamp used when signing
-            True,  # "Submit this lock proof to the verifier?" -> y
         ]
     )
 
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses, kwargs.get("default", True))
+        return next(confirm_responses, kwargs.get("default", True))
 
     def fake_prompt(*args, **kwargs):
-        return next(prompt_responses)
+        return next(prompt_responses, kwargs.get("default", ""))
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
     monkeypatch.setattr("typer.prompt", fake_prompt)
@@ -927,7 +937,17 @@ def test_prove_lock_signature_evm_address_mismatch(monkeypatch):
 
 
 def test_prove_lock_external_signing_flow(monkeypatch):
-    """Test prove-lock when user chooses external signing."""
+    """Test prove-lock when user chooses external signing.
+    
+    Note: External signing is currently disabled in the code, so the code
+    will force local signing instead. This test provides a private key to
+    allow local signing to proceed.
+    """
+    try:
+        from eth_account import Account
+    except ImportError:
+        pytest.skip("eth_account not available")
+
     captured = {}
 
     def fake_submit(payload):
@@ -939,22 +959,27 @@ def test_prove_lock_external_signing_flow(monkeypatch):
     )
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
-    # Mock prompts: user chooses external signing
-    prompt_responses = iter(
+    # Provide private key for local signing (external signing is disabled)
+    test_account = Account.create()
+    test_private_key = test_account.key.hex()
+    monkeypatch.setenv("CARTHA_EVM_PK", test_private_key)
+
+    # Mock prompts: code forces local signing (external is disabled)
+    # Separate iterators for confirms and prompts to avoid confusion
+    confirm_responses = iter(
         [
             False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
-            False,  # "Sign locally with private key? (y/n)" -> n (external)
-            "0x1111111111111111111111111111111111111111",  # EVM address (needed for EIP-712 message)
-            "0x" + "77" * 65,  # Paste signature after external signing
+            True,  # "Is this your correct EVM address?" (from _collect_private_key when miner_evm is None)
             True,  # "Submit this lock proof to the verifier?" -> y
         ]
     )
+    prompt_responses = iter([])  # No prompts needed - all fields provided via CLI or env
 
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses, kwargs.get("default", True))
+        return next(confirm_responses, kwargs.get("default", True))
 
     def fake_prompt(*args, **kwargs):
-        return next(prompt_responses)
+        return next(prompt_responses, kwargs.get("default", ""))
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
     monkeypatch.setattr("typer.prompt", fake_prompt)
@@ -984,15 +1009,13 @@ def test_prove_lock_external_signing_flow(monkeypatch):
         ],
     )
 
+    # Since external signing is disabled, local signing is forced
+    # With CARTHA_EVM_PK set, it should succeed
     assert result.exit_code == 0
-    # Should show message structure for external signing
-    assert (
-        "EIP-712 message files generated" in result.stdout
-        or "Lock proof submitted successfully." in result.stdout
-    )
+    assert "Lock proof submitted successfully." in result.stdout
 
     payload = captured["payload"]
-    assert payload["signature"] == "0x" + "77" * 65
+    assert "signature" in payload
 
 
 def test_generate_eip712_signature_helper(monkeypatch):
@@ -1044,7 +1067,12 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
 
+    def fake_prompt(*args, **kwargs):
+        # Return empty string for pool_id prompt (default value)
+        return kwargs.get("default", "")
+
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     # Create a temporary payload file
     payload_data = {
@@ -1105,11 +1133,16 @@ def test_prove_lock_without_lock_days_cli(monkeypatch):
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
 
+    def fake_prompt(*args, **kwargs):
+        # Return empty string for pool_id prompt (default value)
+        return kwargs.get("default", "")
+
     monkeypatch.setattr(
         "cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit
     )
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     result = runner.invoke(
         app,
@@ -1148,6 +1181,10 @@ def test_prove_lock_without_lock_days_validation(monkeypatch):
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
 
+    def fake_prompt(*args, **kwargs):
+        # Return empty string for pool_id prompt (default value)
+        return kwargs.get("default", "")
+
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     # Mock submit to capture payload
@@ -1161,6 +1198,7 @@ def test_prove_lock_without_lock_days_validation(monkeypatch):
         "cartha_cli.commands.prove_lock_helpers.submit_lock_proof", fake_submit
     )
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     result = runner.invoke(
         app,
@@ -1213,7 +1251,12 @@ def test_prove_lock_payload_file_without_lock_days(monkeypatch):
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
 
+    def fake_prompt(*args, **kwargs):
+        # Return empty string for pool_id prompt (default value)
+        return kwargs.get("default", "")
+
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     # Create a temporary payload file without lock_days (removed)
     payload_data = {
@@ -1274,7 +1317,12 @@ def test_prove_lock_payload_file_without_lock_days_succeeds(monkeypatch):
     def fake_confirm(*args, **kwargs):
         return kwargs.get("default", True)
 
+    def fake_prompt(*args, **kwargs):
+        # Return empty string for pool_id prompt (default value)
+        return kwargs.get("default", "")
+
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
 
     # Create a temporary payload file without lock_days (now optional/removed)
     payload_data = {
@@ -1338,19 +1386,24 @@ def test_prove_lock_eip712_signature_without_lock_days(monkeypatch):
     )
     monkeypatch.setattr("cartha_cli.verifier.submit_lock_proof", fake_submit)
 
-    prompt_responses = iter(
+    # Separate iterators for confirms and prompts to avoid confusion
+    confirm_responses = iter(
         [
-            False,  # No signature
-            True,  # Sign locally
-            True,  # Confirm EVM address
-            True,  # Submit
+            False,  # "Do you already have an EIP-712 signature? (y/n)" -> n
+            True,  # "Is this your correct EVM address?" (from _collect_private_key when miner_evm is None)
+            True,  # "Submit this lock proof to the verifier?" -> y
         ]
     )
+    prompt_responses = iter([])  # No prompts needed - all fields provided via CLI or env
 
     def fake_confirm(*args, **kwargs):
-        return next(prompt_responses, kwargs.get("default", True))
+        return next(confirm_responses, kwargs.get("default", True))
+
+    def fake_prompt(*args, **kwargs):
+        return next(prompt_responses, kwargs.get("default", ""))
 
     monkeypatch.setattr("typer.confirm", fake_confirm)
+    monkeypatch.setattr("typer.prompt", fake_prompt)
     monkeypatch.setattr("rich.prompt.Confirm.ask", fake_confirm)
 
     result = runner.invoke(

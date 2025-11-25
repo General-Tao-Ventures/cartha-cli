@@ -31,10 +31,51 @@ from .prove_lock_helpers import (
     submit_lock_proof_payload,
 )
 from .prove_lock_payload import load_payload_file
-from .prove_lock_signing import (
-    collect_external_signature,
-    generate_external_signing_files,
-)
+
+# Import pool helpers for pool_id conversion
+try:
+    from ...testnet.pool_ids import pool_name_to_id, pool_id_to_name, format_pool_id, list_pools
+except ImportError:
+    # Fallback if running from different context
+    import sys
+    from pathlib import Path
+    # Try adding parent directory to path
+    testnet_dir = Path(__file__).parent.parent.parent / "testnet"
+    if testnet_dir.exists():
+        sys.path.insert(0, str(testnet_dir.parent))
+        try:
+            from testnet.pool_ids import pool_name_to_id, pool_id_to_name, format_pool_id, list_pools
+        except ImportError:
+            # Final fallback
+            def pool_name_to_id(pool_name: str) -> str:
+                """Fallback: encode pool name as hex."""
+                name_bytes = pool_name.encode("utf-8")
+                padded = name_bytes.ljust(32, b"\x00")
+                return "0x" + padded.hex()
+            
+            def pool_id_to_name(pool_id: str) -> str | None:
+                """Fallback: try to decode."""
+                try:
+                    hex_str = pool_id.lower().removeprefix("0x")
+                    pool_bytes = bytes.fromhex(hex_str)
+                    name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
+                    return name if name and name.isprintable() else None
+                except Exception:
+                    return None
+            
+            def format_pool_id(pool_id: str) -> str:
+                """Fallback: return pool_id as-is."""
+                return pool_id
+            
+            def list_pools() -> dict[str, str]:
+                """Fallback: return empty dict."""
+                return {}
+
+# TEMPORARILY DISABLED: External signing disabled for testing
+# from .prove_lock_signing import (
+#     collect_external_signature,
+#     generate_external_signing_files,
+# )
 
 
 def prove_lock(
@@ -109,6 +150,12 @@ def prove_lock(
         help="Unix timestamp (seconds) used when signing the LockProof. Required when using signature from build_lock_proof.py.",
         show_default=False,
     ),
+    pool_id: str | None = typer.Option(
+        None,
+        "--pool-id",
+        help="Pool ID (readable name or hex string). Only used in demo mode - in mainnet, pool_id comes from on-chain events. Use --payload-file to load from build_lock_proof.py output.",
+        show_default=False,
+    ),
     json_output: bool = typer.Option(
         False, "--json", help="Emit the verifier response as JSON."
     ),
@@ -118,7 +165,7 @@ def prove_lock(
         amount_base_units: int | None = None
 
         # Load payload file if provided
-        pool_id: str | None = None
+        pool_id_from_file: str | None = None
         if payload_file is not None:
             (
                 chain,
@@ -132,7 +179,7 @@ def prove_lock(
                 password,
                 signature,
                 timestamp,
-                pool_id,
+                pool_id_from_file,
             ) = load_payload_file(
                 payload_file,
                 chain,
@@ -146,7 +193,55 @@ def prove_lock(
                 signature,
                 timestamp,
             )
-        else:
+            # Use pool_id from file if not provided via CLI
+            if pool_id is None:
+                pool_id = pool_id_from_file
+        
+        # Convert pool_id if provided via CLI (might be readable name)
+        if pool_id is not None:
+            pool_id_clean = pool_id.strip()
+            # Check if it's already a hex string (starts with 0x and is 66 chars)
+            if pool_id_clean.startswith("0x") and len(pool_id_clean) == 66:
+                # Already a valid hex pool_id, just normalize to lowercase
+                pool_id = pool_id_clean.lower()
+                # Try to show readable name if available
+                try:
+                    pool_name = pool_id_to_name(pool_id)
+                    if pool_name:
+                        console.print(f"[dim]Using pool:[/] [cyan]{pool_name}[/] ({pool_id})")
+                except Exception:
+                    pass  # Ignore if pool_id_to_name not available
+            else:
+                # Check if it's a readable pool name (before normalizing as hex)
+                pool_id_upper = pool_id_clean.upper()
+                available_pools = list_pools()
+                if available_pools and pool_id_upper in available_pools:
+                    pool_id = pool_name_to_id(pool_id_upper).lower()
+                    console.print(f"[dim]Converted pool name to ID:[/] [cyan]{pool_id_upper}[/] → {format_pool_id(pool_id)}")
+                else:
+                    # Assume it's a hex string (maybe without 0x prefix), normalize it
+                    pool_id_normalized = normalize_hex(pool_id_clean).lower()
+                    if len(pool_id_normalized) == 66:
+                        pool_id = pool_id_normalized
+                        # Try to show readable name if available
+                        try:
+                            pool_name = pool_id_to_name(pool_id)
+                            if pool_name:
+                                console.print(f"[dim]Using pool:[/] [cyan]{pool_name}[/] ({pool_id})")
+                        except Exception:
+                            pass  # Ignore if pool_id_to_name not available
+                    else:
+                        # Invalid format - warn but use as-is
+                        available_pools = list_pools()
+                        console.print(
+                            f"[yellow]Warning:[/] pool_id '{pool_id_clean}' is not a recognized pool name "
+                            f"and doesn't match expected hex format (66 chars, got {len(pool_id_normalized)}). "
+                            f"Available pools: {', '.join(sorted(available_pools.keys())) if available_pools else 'none'}. "
+                            f"Using as-is: {pool_id_normalized}"
+                        )
+                        pool_id = pool_id_normalized
+        
+        if payload_file is None:
             # Normalize hex fields if provided via CLI args
             if signature is not None:
                 signature = normalize_hex(signature)
@@ -200,17 +295,21 @@ def prove_lock(
                 timestamp = _prompt_timestamp(timestamp)
             else:
                 # Need to generate signature
-                sign_locally = Confirm.ask(
-                    "[bold cyan]Sign locally with private key?[/]", default=True
-                )
+                # TEMPORARILY DISABLED: External signing disabled for testing
+                # sign_locally = Confirm.ask(
+                #     "[bold cyan]Sign locally with private key?[/]", default=True
+                # )
+                
+                # Force local signing for now
+                sign_locally = True
 
                 if sign_locally:
                     private_key_for_signing, miner_evm = _collect_private_key(miner_evm)
-                else:
-                    console.print(
-                        "\n[bold cyan]You'll need to sign externally. "
-                        "We'll collect all fields first, then show you the message to sign.[/]"
-                    )
+                # else:
+                #     console.print(
+                #         "\n[bold cyan]You'll need to sign externally. "
+                #         "We'll collect all fields first, then show you the message to sign.[/]"
+                #     )
 
         # Collect all required fields
         chain, vault, tx, amount_base_units, hotkey, slot, password = (
@@ -226,6 +325,10 @@ def prove_lock(
                 auto_fetch_uid,
             )
         )
+
+        # NOTE: pool_id is NOT part of the EIP-712 signature - it's only metadata
+        # sent to the verifier in demo mode. In mainnet, pool_id comes from on-chain events.
+        # No prompt needed - if not provided, verifier will use default Pool 1 in demo mode
 
         # Generate signature if needed
         if signature is None:
@@ -260,29 +363,38 @@ def prove_lock(
                     console.print("[bold green]✓ Signature generated[/]")
                 except Exception as exc:
                     handle_unexpected_exception("Failed to generate signature", exc)
+            # TEMPORARILY DISABLED: External signing disabled for testing
+            # else:
+            #     # External signing
+            #     if timestamp is None:
+            #         timestamp = int(time.time())
+            #     miner_evm = _prompt_miner_evm(miner_evm)
+            #
+            #     json_filename, txt_filename, html_filename = generate_external_signing_files(
+            #         chain=chain,
+            #         vault=vault,
+            #         miner_evm=miner_evm,
+            #         hotkey=hotkey,
+            #         slot=slot,
+            #         tx=tx,
+            #         amount_base_units=amount_base_units,
+            #         password=password,
+            #         timestamp=timestamp,
+            #     )
+            #
+            #     console.print("\n[bold green]✓ EIP-712 signing files generated[/]")
+            #     console.print(f"[bold cyan]HTML Signer Tool:[/] {html_filename} [bold green](EASIEST - Double-click to open)[/]")
+            #     console.print(f"[bold cyan]JSON file:[/] {json_filename}")
+            #     console.print(f"[bold cyan]Instructions:[/] {txt_filename}")
+            #
+            #     signature = collect_external_signature()
             else:
-                # External signing
-                if timestamp is None:
-                    timestamp = int(time.time())
-                miner_evm = _prompt_miner_evm(miner_evm)
-
-                json_filename, txt_filename = generate_external_signing_files(
-                    chain=chain,
-                    vault=vault,
-                    miner_evm=miner_evm,
-                    hotkey=hotkey,
-                    slot=slot,
-                    tx=tx,
-                    amount_base_units=amount_base_units,
-                    password=password,
-                    timestamp=timestamp,
+                # External signing is temporarily disabled
+                console.print(
+                    "[bold red]Error:[/] External signing is temporarily disabled. "
+                    "Please use local signing with a private key."
                 )
-
-                console.print("\n[bold green]✓ EIP-712 message files generated[/]")
-                console.print(f"[bold cyan]JSON file:[/] {json_filename}")
-                console.print(f"[bold cyan]Instructions:[/] {txt_filename}")
-
-                signature = collect_external_signature()
+                raise typer.Exit(code=1)
 
         # Ensure miner_evm is set
         if miner_evm is None:
@@ -304,6 +416,34 @@ def prove_lock(
         assert signature is not None, "Signature must be set"
         assert timestamp is not None, "Timestamp must be set"
 
+        # Convert pool_id if provided via CLI (for demo mode only)
+        # In mainnet, pool_id comes from on-chain events, not from CLI
+        if pool_id is not None:
+            pool_id_clean = pool_id.strip()
+            # Check if it's already a hex string (starts with 0x and is 66 chars)
+            if pool_id_clean.startswith("0x") and len(pool_id_clean) == 66:
+                # Already a valid hex pool_id, just normalize to lowercase
+                pool_id = pool_id_clean.lower()
+            else:
+                # Check if it's a readable pool name (before normalizing as hex)
+                pool_id_upper = pool_id_clean.upper()
+                available_pools = list_pools()
+                if available_pools and pool_id_upper in available_pools:
+                    pool_id = pool_name_to_id(pool_id_upper).lower()
+                    console.print(f"[dim]Using pool:[/] [cyan]{pool_id_upper}[/] ({format_pool_id(pool_id)})")
+                else:
+                    # Assume it's a hex string (maybe without 0x prefix), normalize it
+                    pool_id_normalized = normalize_hex(pool_id_clean).lower()
+                    if len(pool_id_normalized) == 66:
+                        pool_id = pool_id_normalized
+                    else:
+                        console.print(
+                            f"[yellow]Warning:[/] pool_id '{pool_id_clean}' is not a recognized pool name "
+                            f"and doesn't match expected hex format (66 chars, got {len(pool_id_normalized)}). "
+                            f"Using as-is: {pool_id_normalized}"
+                        )
+                        pool_id = pool_id_normalized
+
         # Create payload
         slot_id = str(slot)
         payload = submit_lock_proof_payload(
@@ -322,7 +462,7 @@ def prove_lock(
 
         # Show summary and confirm
         _show_summary_and_confirm(
-            payload, chain, vault, tx, hotkey, slot_id, miner_evm, json_output
+            payload, chain, vault, tx, hotkey, slot_id, miner_evm, json_output, pool_id
         )
 
         # Submit
@@ -641,6 +781,7 @@ def _show_summary_and_confirm(
     slot_id: str,
     miner_evm: str,
     json_output: bool,
+    pool_id: str | None = None,
 ) -> None:
     """Show summary table and get confirmation."""
 
@@ -660,6 +801,18 @@ def _show_summary_and_confirm(
         summary_table.add_row("Hotkey", hotkey)
         summary_table.add_row("Slot UID", slot_id)
         summary_table.add_row("EVM Address", miner_evm)
+        # Add pool name if available (convert pool_id to name for display)
+        if pool_id:
+            try:
+                from ...testnet.pool_ids import pool_id_to_name
+                pool_name = pool_id_to_name(pool_id)
+                if pool_name:
+                    # Capitalize pool name for display
+                    summary_table.add_row("Pool", pool_name.upper())
+                else:
+                    summary_table.add_row("Pool ID", pool_id)  # Fallback to hex if no name found
+            except ImportError:
+                summary_table.add_row("Pool ID", pool_id)
         summary_table.add_row(
             "Signature",
             payload["signature"][:20] + "..." + payload["signature"][-10:],

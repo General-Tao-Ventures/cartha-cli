@@ -51,14 +51,7 @@ def generate_random_tx_hash() -> str:
     return "0x" + "".join(random.choices("0123456789abcdef", k=64))
 
 
-try:
-    from .pool_ids import pool_name_to_id, format_pool_id, list_pools
-except ImportError:
-    # Fallback if running as script
-    import sys
-    from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).parent))
-    from pool_ids import pool_name_to_id, format_pool_id, list_pools
+# pool_id helpers removed - not needed for signature generation
 
 
 def generate_pool_id(pool_number: int) -> str:
@@ -117,11 +110,9 @@ def main(
         "--tx",
         help="Transaction hash. If not provided, a random hash will be generated.",
     ),
-    pool_id: str = typer.Option(
-        None,
-        "--pool-id",
-        help="Pool ID (readable name like 'USDEUR', 'XAUUSD', or hex string). Defaults to 'USDEUR'.",
-    ),
+    # pool_id removed - not part of EIP-712 signature
+    # In mainnet, verifier gets pool_id from on-chain events
+    # In demo mode, verifier can use default Pool 1
     amount: str = typer.Option(
         None,
         "--amount",
@@ -142,7 +133,7 @@ def main(
     - Chain: 31337 (local/test)
     - Vault: Mock allowlisted vault address
     - TX: Random transaction hash (unless --tx provided)
-    - Pool ID: USDEUR (readable name) unless --pool-id provided (accepts names like USDEUR, XAUUSD, or hex)
+    - Pool ID: Not included (verifier gets it from on-chain events in mainnet)
     - Amount: Prompted (defaults to a random float amount, 100-9999 USDC)
     - Lock Days: Read from on-chain event (set DEMO_LOCK_DAYS in verifier for demo mode)
 
@@ -166,37 +157,9 @@ def main(
         if len(tx_hash) != 66:
             raise typer.BadParameter("Transaction hash must be 32 bytes (0x + 64 hex chars).")
 
-    # Handle pool_id (accept readable names or hex)
-    if pool_id is None:
-        # Randomize pool selection from available pools
-        available_pools_dict = list_pools()
-        if available_pools_dict:
-            # Get list of pool names (keys) and randomly select one
-            pool_names = list(available_pools_dict.keys())
-            random_pool_name = random.choice(pool_names)
-            pool_id = pool_name_to_id(random_pool_name)
-            console.print(f"[dim]Randomly selected pool:[/] [cyan]{random_pool_name}[/] ({pool_id})")
-        else:
-            # Fallback to USDEUR if no pools available
-            pool_id = pool_name_to_id("EURUSD")
-            console.print(f"[dim]Using default pool:[/] [cyan]EURUSD[/] ({pool_id})")
-    else:
-        # Check if it's a readable name first
-        pool_id_upper = pool_id.upper()
-        if pool_id_upper in list_pools():
-            readable_name = pool_id_upper
-            pool_id = pool_name_to_id(readable_name)
-            console.print(f"[dim]Using pool:[/] [cyan]{readable_name}[/] ({pool_id})")
-        else:
-            # Assume it's a hex string
-            pool_id = _normalize_hex(pool_id)
-            if len(pool_id) != 66:
-                raise typer.BadParameter(
-                    "Pool ID must be a readable name (USDEUR, XAUUSD, etc.) "
-                    "or a hex string (0x + 64 hex chars)."
-                )
-            readable_name = format_pool_id(pool_id)
-            console.print(f"[dim]Using pool ID:[/] [cyan]{readable_name}[/]")
+    # pool_id removed - not part of EIP-712 signature
+    # In mainnet, verifier gets pool_id from on-chain LockCreated events
+    # This script only generates signatures, not pool assignments
 
     # Prompt for amount if not provided
     if amount is None:
@@ -222,7 +185,7 @@ def main(
     password = pwd or os.getenv("CARTHA_DEMO_PASSWORD")
     if not password:
         password = Prompt.ask("Pair password (0x...)", default="0x")
-    password = _normalize_hex(password)
+    password = _normalize_hex(password.lower())  # Normalize to lowercase for consistency with verifier
     if len(password) != 66:
         raise typer.BadParameter("Password must be 32 bytes (0x + 64 hex chars).")
 
@@ -312,10 +275,8 @@ def main(
         "password": password,
         "timestamp": timestamp,
         "signature": signature_normalized,
-        # pool_id is used by verifier in demo mode (DEMO_SKIP_LOCKPROOF=1)
-        "pool_id": pool_id,
-        # Metadata for reference:
-        "_demo_pool_id": pool_id,
+        # pool_id removed - not part of signature
+        # In mainnet, verifier gets pool_id from on-chain events
         "_name": payload_name,
     }
 
@@ -361,9 +322,8 @@ def main(
     console.print(
         f"\n[dim]Note:[/] Amount {amount} USDC = {amount_base_units} base units (sent to verifier)"
     )
-    pool_display = format_pool_id(pool_id)
     console.print(
-        f"\n[dim]Note:[/] Pool ID: {pool_display} (used by verifier in demo mode)"
+        "\n[dim]Note:[/] Pool ID is determined by verifier from on-chain events (mainnet) or defaults to Pool 1 (demo mode)"
     )
     console.print(
         "\n[dim]Note:[/] lockDays is read from on-chain event (set DEMO_LOCK_DAYS in verifier for demo mode)"

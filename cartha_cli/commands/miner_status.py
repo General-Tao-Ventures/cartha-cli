@@ -22,22 +22,8 @@ from .common import (
     handle_wallet_exception,
 )
 
-# Import pool name helper
-try:
-    from ...testnet.pool_ids import pool_id_to_name
-except ImportError:
-    # Fallback if running from different context
-    def pool_id_to_name(pool_id: str) -> str | None:
-        """Simple fallback to decode pool ID."""
-        try:
-            hex_str = pool_id.lower().removeprefix("0x")
-            pool_bytes = bytes.fromhex(hex_str)
-            name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-            if name and name.isprintable():
-                return name
-        except Exception:
-            pass
-        return None
+# Note: CLI does NOT convert pool_id to pool_name - verifier handles that
+# CLI just displays the pool_name from verifier response (capitalized)
 
 
 def miner_status(
@@ -271,31 +257,20 @@ def miner_status(
             pool_table.add_column("EVM Address", style="dim")
 
             for pool in pools:
-                # Format pool name
+                # Get pool name from verifier response (already converted by verifier)
+                # Display capitalized version
                 pool_name = pool.get("pool_name")
-                if not pool_name:
+                if pool_name:
+                    # Capitalize pool name for display
+                    pool_display = pool_name.upper()
+                else:
+                    # Fallback: if verifier didn't provide name, show last 8 chars of pool_id
                     pool_id = pool.get("pool_id", "")
                     if pool_id:
-                        pool_name = pool_id_to_name(pool_id)
-                        if not pool_name:
-                            # Try to decode from hex if not in mappings
-                            try:
-                                hex_str = pool_id.lower().removeprefix("0x")
-                                pool_bytes = bytes.fromhex(hex_str)
-                                decoded = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-                                if decoded and decoded.isprintable() and len(decoded) > 0:
-                                    pool_name = decoded
-                                elif pool_id.lower() == "0x" + "0" * 64:
-                                    pool_name = "Default Pool"
-                                else:
-                                    # Show last 8 chars of hex for unknown pools
-                                    pool_name = f"Pool ({pool_id[-8:]})"
-                            except Exception:
-                                # Fallback to showing truncated pool_id
-                                pool_name = f"Pool ({pool_id[:10]}...)"
+                        pool_id_normalized = str(pool_id).lower().strip()
+                        pool_display = f"Pool ({pool_id_normalized[-8:]})"
                     else:
-                        pool_name = "Unknown"
-                pool_display = pool_name
+                        pool_display = "Unknown"
 
                 # Format amount locked
                 amount_usdc = pool.get("amount_usdc", 0)
