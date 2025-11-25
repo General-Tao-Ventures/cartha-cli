@@ -9,9 +9,9 @@ Complete documentation for all Cartha CLI commands and their arguments.
   - [cartha miner register](#cartha-miner-register)
   - [cartha miner status](#cartha-miner-status)
   - [cartha miner password](#cartha-miner-password)
-- [Portfolio Commands](#portfolio-commands)
-  - [cartha portfolio lock](#cartha-portfolio-lock)
-  - [cartha portfolio claim](#cartha-portfolio-claim)
+- [Vault Commands](#vault-commands)
+  - [cartha vault lock](#cartha-vault-lock)
+  - [cartha vault claim](#cartha-vault-claim)
 - [Other Commands](#other-commands)
 - [cartha version](#cartha-version)
   - [cartha pair status](#cartha-pair-status-legacy)
@@ -25,7 +25,7 @@ Complete documentation for all Cartha CLI commands and their arguments.
 The CLI is organized into logical command groups with short aliases:
 
 - **`cartha miner`** (or **`cartha m`**) - Miner management commands
-- **`cartha portfolio`** (or **`cartha p`**) - Portfolio management commands
+- **`cartha vault`** (or **`cartha v`**) - Vault management commands
 
 ---
 
@@ -248,18 +248,18 @@ cartha miner password \
 
 ---
 
-## Portfolio Commands
+## Vault Commands
 
-### cartha portfolio lock
+### cartha vault lock
 
 Submit a lock proof for your USDC deposit to the verifier. This command handles the entire EIP-712 signing workflow, supporting both local signing (with your EVM private key) and external signing (MetaMask, hardware wallets, etc.).
 
 #### Usage
 
 ```bash
-cartha portfolio lock [OPTIONS]
+cartha vault lock [OPTIONS]
 # or
-cartha p lock [OPTIONS]
+cartha v lock [OPTIONS]
 ```
 
 #### Options
@@ -287,7 +287,7 @@ cartha p lock [OPTIONS]
 
 ```bash
 # Submit with all arguments (will prompt for signature if not provided)
-cartha portfolio lock \
+cartha vault lock \
   --chain 8453 \
   --vault 0x1234567890123456789012345678901234567890 \
   --tx 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890 \
@@ -298,14 +298,14 @@ cartha portfolio lock \
   --pwd 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 
 # Using short alias
-cartha p lock --chain 8453 --vault 0xVAULT --tx 0xTXHASH --amount 250 \
+cartha v lock --chain 8453 --vault 0xVAULT --tx 0xTXHASH --amount 250 \
   --hotkey bt1... --slot 123 --miner-evm 0xEVM --pwd 0xPWD
 
 # Use payload file (from build_lock_proof.py)
-cartha portfolio lock --payload-file testnet/outputs/lock_proof_payload.json
+cartha vault lock --payload-file testnet/outputs/lock_proof_payload.json
 
 # JSON output mode
-cartha portfolio lock \
+cartha vault lock \
   --chain 8453 \
   --vault 0x1234... \
   --tx 0xabcd... \
@@ -349,21 +349,21 @@ See [EIP-712 Signing Guide](EIP712_SIGNING.md) for detailed instructions.
 
 ---
 
-### cartha portfolio claim
+### cartha vault claim
 
-Alias for `portfolio lock` designed for deposit-first workflows.
+Alias for `vault lock` designed for deposit-first workflows.
 
 #### Usage
 
 ```bash
-cartha portfolio claim [OPTIONS]
+cartha vault claim [OPTIONS]
 # or
-cartha p claim [OPTIONS]
+cartha v claim [OPTIONS]
 ```
 
 #### Options
 
-Same as `cartha portfolio lock`. See [cartha portfolio lock](#cartha-portfolio-lock) for complete documentation.
+Same as `cartha vault lock`. See [cartha vault lock](#cartha-vault-lock) for complete documentation.
 
 #### When to Use
 
@@ -469,7 +469,7 @@ CARTHA_NETUID=35
 
 2. **Submit the lock proof:**
    ```bash
-   cartha portfolio lock \
+   cartha vault lock \
      --chain 8453 \
      --vault 0xVAULT \
      --tx 0xTXHASH \
@@ -536,7 +536,7 @@ For testnet or automated workflows:
 
 2. **Submit using payload file:**
    ```bash
-   cartha portfolio lock --payload-file testnet/outputs/lock_proof_payload.json
+   cartha vault lock --payload-file testnet/outputs/lock_proof_payload.json
    ```
 
 ---

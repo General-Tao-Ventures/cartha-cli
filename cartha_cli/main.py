@@ -32,14 +32,14 @@ miner_app_alias = typer.Typer(
     name="m",
     invoke_without_command=True,
 )
-portfolio_app = typer.Typer(
-    help="Portfolio management commands: lock funds and claim deposits.",
-    name="portfolio",
+vault_app = typer.Typer(
+    help="Vault management commands: lock funds and claim deposits.",
+    name="vault",
     invoke_without_command=True,
 )
-portfolio_app_alias = typer.Typer(
-    help="Portfolio management commands: lock funds and claim deposits.",
-    name="p",
+vault_app_alias = typer.Typer(
+    help="Vault management commands: lock funds and claim deposits.",
+    name="v",
     invoke_without_command=True,
 )
 
@@ -61,7 +61,7 @@ def miner_group_callback(
         raise typer.Exit()
 
 
-def portfolio_group_callback(
+def vault_group_callback(
     ctx: typer.Context,
     help_option: bool = typer.Option(
         False,
@@ -71,7 +71,7 @@ def portfolio_group_callback(
         is_eager=True,
     ),
 ) -> None:
-    """Portfolio management commands."""
+    """Vault management commands."""
     if ctx.invoked_subcommand is None or help_option:
         ctx.get_help()
         raise typer.Exit()
@@ -81,9 +81,9 @@ def portfolio_group_callback(
 miner_app.callback(invoke_without_command=True)(miner_group_callback)
 miner_app_alias.callback(invoke_without_command=True)(miner_group_callback)
 
-# Register callbacks for both portfolio apps (main and alias)
-portfolio_app.callback(invoke_without_command=True)(portfolio_group_callback)
-portfolio_app_alias.callback(invoke_without_command=True)(portfolio_group_callback)
+# Register callbacks for both vault apps (main and alias)
+vault_app.callback(invoke_without_command=True)(vault_group_callback)
+vault_app_alias.callback(invoke_without_command=True)(vault_group_callback)
 
 # Register commands in both miner apps (main and alias)
 for miner_group in [miner_app, miner_app_alias]:
@@ -91,16 +91,16 @@ for miner_group in [miner_app, miner_app_alias]:
     miner_group.command("password")(miner_password.miner_password)
     miner_group.command("register")(register.register)
 
-# Register commands in both portfolio apps (main and alias)
-for portfolio_group in [portfolio_app, portfolio_app_alias]:
-    portfolio_group.command("lock")(prove_lock.prove_lock)
-    portfolio_group.command("claim")(claim_deposit.claim_deposit)
+# Register commands in both vault apps (main and alias)
+for vault_group in [vault_app, vault_app_alias]:
+    vault_group.command("lock")(prove_lock.prove_lock)
+    vault_group.command("claim")(claim_deposit.claim_deposit)
 
 # Add groups with short aliases (after callbacks and commands are registered)
 app.add_typer(miner_app, name="miner")
 app.add_typer(miner_app_alias, name="m")  # Short alias
-app.add_typer(portfolio_app, name="portfolio")
-app.add_typer(portfolio_app_alias, name="p")  # Short alias
+app.add_typer(vault_app, name="vault")
+app.add_typer(vault_app_alias, name="v")  # Short alias
 
 # Keep pair_app for backward compatibility (deprecated)
 pair_app = typer.Typer(

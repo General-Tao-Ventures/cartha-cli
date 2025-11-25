@@ -11,7 +11,6 @@ Cartha CLI makes mining on the Cartha subnet effortless:
 - **⏰ Smart Expiration Warnings** - Never miss a renewal with color-coded countdowns
 - **💼 Multi-Pool Management** - Track multiple trading pairs in one place
 - **🔑 Secure by Default** - Your password stays hidden until you actually need it
-- **⚡ Fast & Simple** - Quick commands with helpful shortcuts (`cartha m` and `cartha p`)
 
 ## Quick Start
 
@@ -30,7 +29,7 @@ uv run cartha miner status --help
 
 # Or use short aliases
 uv run cartha m status
-uv run cartha p lock
+uv run cartha v lock
 ```
 
 ## Requirements
@@ -66,8 +65,8 @@ See all your active trading pairs, balances, and when they expire—all in one c
 
 After depositing USDC to a vault, lock it with:
 ```bash
-cartha portfolio lock --payload-file your-lock-proof.json
-# Or use: cartha p lock
+cartha vault lock --payload-file your-lock-proof.json
+# Or use: cartha v lock
 ```
 
 ### View Your Password

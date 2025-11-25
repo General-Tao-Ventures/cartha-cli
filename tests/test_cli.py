@@ -597,7 +597,7 @@ def test_prove_lock_command_success(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -680,7 +680,7 @@ def test_prove_lock_with_local_signature_generation(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -761,7 +761,7 @@ def test_prove_lock_with_external_signature_prompt(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -843,7 +843,7 @@ def test_prove_lock_local_signature_without_env_var(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -911,7 +911,7 @@ def test_prove_lock_signature_evm_address_mismatch(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -990,7 +990,7 @@ def test_prove_lock_external_signing_flow(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -1098,7 +1098,7 @@ def test_prove_lock_payload_file_with_signature(monkeypatch):
         result = runner.invoke(
             app,
             [
-                "portfolio",
+                "vault",
                 "lock",
                 "--payload-file",
                 payload_file,
@@ -1147,7 +1147,7 @@ def test_prove_lock_without_lock_days_cli(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -1203,7 +1203,7 @@ def test_prove_lock_without_lock_days_validation(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
@@ -1282,7 +1282,7 @@ def test_prove_lock_payload_file_without_lock_days(monkeypatch):
         result = runner.invoke(
             app,
             [
-                "portfolio",
+                "vault",
                 "lock",
                 "--payload-file",
                 payload_file,
@@ -1348,7 +1348,7 @@ def test_prove_lock_payload_file_without_lock_days_succeeds(monkeypatch):
         result = runner.invoke(
             app,
             [
-                "portfolio",
+                "vault",
                 "lock",
                 "--payload-file",
                 payload_file,
@@ -1409,7 +1409,7 @@ def test_prove_lock_eip712_signature_without_lock_days(monkeypatch):
     result = runner.invoke(
         app,
         [
-            "portfolio",
+            "vault",
             "lock",
             "--chain",
             "8453",
