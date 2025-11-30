@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+import time
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
@@ -432,10 +433,10 @@ def prove_lock(
         console.print()
 
         console.print(
-            "[bold yellow]⚠️  After executing the transactions, the verifier will automatically detect the lock.[/]"
+            "[dim]The verifier will automatically detect the lock after you execute the transactions.[/]"
         )
         console.print(
-            "[dim]The verifier will automatically detect the lock after you execute the transactions.[/]"
+            f"[dim]You can also check status with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
         )
 
         # Step 9: Optionally poll for status
