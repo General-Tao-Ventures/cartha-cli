@@ -170,9 +170,8 @@ cartha-cli/
 │   ├── eth712.py       # EIP-712 signature helpers
 │   ├── verifier.py     # Verifier API client
 │   └── config.py       # Configuration
-├── testnet/            # Testnet-specific scripts
-│   ├── build_lock_proof.py
-│   └── create_demo_evm_key.py
+├── testnet/            # Testnet-specific helpers
+│   └── pool_ids.py     # Pool ID conversion helpers
 ├── tests/              # Test suite
 └── pyproject.toml      # Project config
 ```

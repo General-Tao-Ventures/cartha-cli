@@ -89,13 +89,14 @@ If you encounter registration problems:
 - Note wallet and hotkey names (redact sensitive parts)
 - Include network and netuid
 
-### Lock Proof Issues
+### Lock Issues
 
-If you have problems with lock proofs:
+If you have problems with the lock flow:
 
-- Include the `build_lock_proof.py` output (redact sensitive data)
-- Share the `prove-lock` command used
+- Include the CLI command output (redact sensitive data)
+- Share the `cartha vault lock` command used
 - Include error messages from the verifier
+- Include transaction hashes if available
 - Note if using testnet or mainnet
 
 ### Pair Password Issues

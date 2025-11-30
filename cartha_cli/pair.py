@@ -11,7 +11,7 @@ from rich.console import Console
 
 from .bt import get_subtensor
 from .utils import format_timestamp
-from .verifier import VerifierError, fetch_pair_password, fetch_pair_status
+from .verifier import VerifierError, fetch_pair_status
 from .wallet import CHALLENGE_PREFIX, CHALLENGE_TTL_SECONDS, load_wallet
 
 console = Console()
@@ -145,8 +145,9 @@ def build_pair_auth_payload(
     wallet_name: str,
     wallet_hotkey: str,
     skip_metagraph_check: bool = False,
+    challenge_prefix: str | None = None,
 ) -> dict[str, Any]:
-    """Build authentication payload for pair status/password requests.
+    """Build authentication payload for pair status/password requests or lock flow.
 
     Args:
         network: Bittensor network name
@@ -156,6 +157,7 @@ def build_pair_auth_payload(
         wallet_name: Coldkey wallet name
         wallet_hotkey: Hotkey name
         skip_metagraph_check: Skip metagraph validation check
+        challenge_prefix: Challenge prefix (defaults to CHALLENGE_PREFIX, use "cartha-lock" for lock flow)
 
     Returns:
         Dictionary with message, signature, and expires_at
@@ -167,8 +169,9 @@ def build_pair_auth_payload(
         )
 
     timestamp = int(time.time())
+    prefix = challenge_prefix or CHALLENGE_PREFIX
     message = (
-        f"{CHALLENGE_PREFIX}|network:{network}|netuid:{netuid}|slot:{slot}|"
+        f"{prefix}|network:{network}|netuid:{netuid}|slot:{slot}|"
         f"hotkey:{hotkey}|ts:{timestamp}"
     )
     message_bytes = message.encode("utf-8")
@@ -193,52 +196,6 @@ def build_pair_auth_payload(
     }
 
 
-def request_pair_status_or_password(
-    *,
-    mode: str,
-    hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    auth_payload: dict[str, Any],
-) -> dict[str, Any]:
-    """Request pair status or password from verifier.
-
-    Args:
-        mode: Either "status" or "password"
-        hotkey: Hotkey SS58 address
-        slot: Slot UID
-        network: Bittensor network name
-        netuid: Subnet netuid
-        auth_payload: Authentication payload from build_pair_auth_payload
-
-    Returns:
-        Response dictionary from verifier
-
-    Raises:
-        typer.Exit: If request fails
-    """
-    request_kwargs = {
-        "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": auth_payload["message"],
-        "signature": auth_payload["signature"],
-    }
-    try:
-        if mode == "status":
-            return fetch_pair_status(**request_kwargs)
-        if mode == "password":
-            return fetch_pair_password(**request_kwargs)
-    except VerifierError as exc:
-        # Check if it's a timeout error
-        error_msg = str(exc)
-        if "timed out" in error_msg.lower() or "timeout" in error_msg.lower():
-            console.print(f"[bold red]Request timed out[/]")
-            console.print(f"[yellow]{error_msg}[/]")
-        else:
-            console.print(f"[bold red]Verifier request failed[/]: {exc}")
-        raise typer.Exit(code=1) from exc
-    raise RuntimeError(f"Unknown mode {mode}")  # pragma: no cover
+# REMOVED: request_pair_status_or_password - replaced by new lock flow
+# Old function removed as part of new lock flow implementation
 

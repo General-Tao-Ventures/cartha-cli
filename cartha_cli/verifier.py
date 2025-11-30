@@ -28,8 +28,11 @@ def _request(
     *,
     params: dict[str, Any] | None = None,
     json_data: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    headers: dict[str, str] = {"Accept": "application/json"}
+    request_headers: dict[str, str] = {"Accept": "application/json"}
+    if headers:
+        request_headers.update(headers)
     url = _build_url(path)
 
     try:
@@ -42,7 +45,7 @@ def _request(
             url,
             params=params,
             json=json_data,
-            headers=headers,
+            headers=request_headers,
             timeout=(5, 60),  # (connect_timeout, read_timeout) in seconds
         )
     except requests.Timeout as exc:
@@ -145,68 +148,119 @@ def fetch_pair_status(
     )
 
 
-def fetch_pair_password(
+# REMOVED: fetch_pair_password and register_pair_password
+# These functions are no longer needed - the new lock flow uses session tokens instead of passwords.
+# The verifier endpoints /v1/pair/password/* have been removed.
+
+
+def check_registration(
     *,
     hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    message: str,
-    signature: str,
+    miner_slot: str | None = None,
+    uid: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch the pair password via the secured endpoint."""
+    """Check if a hotkey is registered on subnet 35.
+    
+    Returns: {registered: bool, uid: int | None}
+    """
+    params: dict[str, Any] = {"hotkey": hotkey}
+    if miner_slot is not None:
+        params["minerSlot"] = miner_slot
+    if uid is not None:
+        params["uid"] = uid
+    return _request(
+        "GET",
+        "/subnet/check-registration",
+        params=params,
+    )
+
+
+def verify_hotkey(
+    *,
+    hotkey: str,
+    signature: str,
+    message: str,
+) -> dict[str, Any]:
+    """Verify Bittensor hotkey signature and get session token.
+    
+    Returns: {verified: bool, session_token: str, expires_at: int}
+    """
     payload = {
         "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": message,
         "signature": signature,
+        "message": message,
     }
     return _request(
         "POST",
-        "/v1/pair/password/retrieve",
+        "/auth/verify-hotkey",
         json_data=payload,
     )
 
 
-def register_pair_password(
+def request_lock_signature(
     *,
+    session_token: str,
+    pool_id: str,
+    amount: int,
+    lock_days: int,
     hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    message: str,
-    signature: str,
+    miner_slot: str | None,
+    uid: str | None,
+    owner: str,
+    chain_id: int,
+    vault_address: str,
 ) -> dict[str, Any]:
+    """Request EIP-712 LockRequest signature from verifier.
+    
+    Returns: {signature, timestamp, nonce, expiresAt, approveTx, lockTx}
+    """
     payload = {
+        "poolId": pool_id,
+        "amount": amount,
+        "lockDays": lock_days,
         "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": message,
-        "signature": signature,
+        "owner": owner,
+        "chainId": chain_id,
+        "vaultAddress": vault_address,
     }
+    if miner_slot is not None:
+        payload["minerSlot"] = miner_slot
+    if uid is not None:
+        payload["uid"] = uid
+    
+    headers = {"Authorization": f"Bearer {session_token}"}
     return _request(
         "POST",
-        "/v1/pair/password/register",
+        "/lock/request-signature",
         json_data=payload,
+        headers=headers,
     )
 
 
-def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
-    """Submit a lock proof to the verifier."""
+def get_lock_status(
+    *,
+    tx_hash: str,
+) -> dict[str, Any]:
+    """Check status of a lock transaction.
+    
+    Returns: {verified: bool, lockId: str | None, addedToEpoch: str | None, message: str | None}
+    """
     return _request(
-        "POST",
-        "/v1/proofs/lock",
-        json_data=payload,
+        "GET",
+        "/lock/status",
+        params={"txHash": tx_hash},
     )
+
+
+# REMOVED: Old endpoints - replaced by new lock flow
+# fetch_pair_password, register_pair_password, submit_lock_proof removed
 
 
 __all__ = [
     "VerifierError",
     "fetch_pair_status",
-    "fetch_pair_password",
-    "register_pair_password",
-    "submit_lock_proof",
+    "check_registration",
+    "verify_hotkey",
+    "request_lock_signature",
+    "get_lock_status",
 ]

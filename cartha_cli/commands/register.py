@@ -16,7 +16,7 @@ from ..bt import (
 from ..config import settings
 from ..display import display_clock_and_countdown
 from ..pair import build_pair_auth_payload
-from ..verifier import VerifierError, register_pair_password
+from ..verifier import VerifierError
 from .common import (
     console,
     handle_unexpected_exception,
@@ -210,51 +210,15 @@ def register(
             # challenge build failed; already reported.
             return
 
-        try:
-            with console.status(
-                "[bold cyan]Verifying registration with Cartha verifier[/] (this can take ~30-60 seconds while the network confirms ownership)...",
-                spinner="dots",
-            ):
-                try:
-                    password_payload = register_pair_password(
-                        hotkey=result.hotkey,
-                        slot=slot_uid,
-                        network=network,
-                        netuid=netuid,
-                        message=auth_payload["message"],
-                        signature=auth_payload["signature"],
-                    )
-                except VerifierError as exc:
-                    message = str(exc)
-                    if exc.status_code == 504 or "timeout" in message.lower():
-                        console.print(
-                            "[bold yellow]Password generation timed out[/]: run 'cartha miner status' in ~1 minute to check once the verifier completes."
-                        )
-                    else:
-                        console.print(
-                            f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha miner status' later to confirm."
-                        )
-                    return
-        except typer.Exit:
-            raise
-        except Exception as exc:
-            handle_unexpected_exception(
-                "Verifier password registration failed unexpectedly", exc
-            )
-
-        pair_pwd = password_payload.get("pwd")
-        if pair_pwd:
-            console.print(
-                f"[bold green]Pair password[/] for {result.hotkey}/{slot_uid}: [yellow]{pair_pwd}[/]"
-            )
-            console.print(
-                "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
-            )
-        else:
-            console.print(
-                "[bold yellow]Verifier did not return a pair password[/]. "
-                "Run 'cartha miner status' to check availability."
-            )
+        # Note: Password registration removed - new lock flow uses session tokens instead
+        console.print(
+            "[bold green]✓ Registration complete![/] "
+            f"Hotkey: {result.hotkey}, Slot UID: {slot_uid}"
+        )
+        console.print(
+            "[dim]Note: The new lock flow uses session tokens instead of passwords. "
+            "Use 'cartha vault lock' to create a lock position.[/]"
+        )
     else:
         console.print(
             "[bold yellow]UID not yet available[/] (node may still be syncing)."

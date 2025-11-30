@@ -14,7 +14,7 @@ def print_root_help() -> None:
     console.print(Rule("[bold cyan]Cartha CLI[/]"))
     console.print(
         "Miner-facing command line tool for Cartha subnet miners.\n"
-        "Authenticate against the verifier, inspect pair status, and submit LockProof payloads."
+        "Register on the subnet, manage lock positions, and track your mining status."
     )
     console.print()
     console.print("[bold]Usage[/]: cartha [OPTIONS] COMMAND [ARGS]...")
@@ -59,10 +59,7 @@ def print_root_help() -> None:
         title="Vault Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
     )
     vault_commands.add_row(
-        "[green]vault lock[/]", "Submit a LockProof payload to lock funds."
-    )
-    vault_commands.add_row(
-        "[green]vault claim[/]", "Alias for lock (deposit-first flow)."
+        "[green]vault lock[/]", "Create a new lock position with verifier-signed LockRequest."
     )
     console.print(vault_commands)
     console.print()

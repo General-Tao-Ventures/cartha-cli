@@ -5,7 +5,6 @@ from __future__ import annotations
 import typer
 
 from .commands import (
-    claim_deposit,
     miner_password,
     miner_status,
     pair_status,
@@ -17,7 +16,7 @@ from .commands.common import log_endpoint_banner, set_trace_enabled
 from .commands.help import print_root_help
 
 app = typer.Typer(
-    help="Miner-facing tooling for registering on the Cartha subnet, managing pair passwords, and submitting lock proofs.",
+    help="Miner-facing tooling for registering on the Cartha subnet and managing lock positions.",
     add_completion=False,
 )
 
@@ -94,7 +93,6 @@ for miner_group in [miner_app, miner_app_alias]:
 # Register commands in both vault apps (main and alias)
 for vault_group in [vault_app, vault_app_alias]:
     vault_group.command("lock")(prove_lock.prove_lock)
-    vault_group.command("claim")(claim_deposit.claim_deposit)
 
 # Add groups with short aliases (after callbacks and commands are registered)
 app.add_typer(miner_app, name="miner")
