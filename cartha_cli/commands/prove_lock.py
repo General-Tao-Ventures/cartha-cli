@@ -14,11 +14,10 @@ from rich.table import Table
 from web3 import Web3
 
 from ..config import settings
-from ..pair import build_pair_auth_payload
+from ..pair import build_pair_auth_payload, get_uid_from_hotkey
 from ..utils import normalize_hex, usdc_to_base_units
 from ..verifier import (
     VerifierError,
-    check_registration,
     get_lock_status,
     request_lock_signature,
     verify_hotkey,
@@ -57,7 +56,7 @@ except ImportError:
                 name_bytes = pool_name.encode("utf-8")
                 padded = name_bytes.ljust(32, b"\x00")
                 return "0x" + padded.hex()
-
+            
             def pool_id_to_name(pool_id: str) -> str | None:
                 """Fallback: try to decode."""
                 try:
@@ -67,11 +66,11 @@ except ImportError:
                     return name if name and name.isprintable() else None
                 except Exception:
                     return None
-
+            
             def format_pool_id(pool_id: str) -> str:
                 """Fallback: return pool_id as-is."""
                 return pool_id
-
+            
             def list_pools() -> dict[str, str]:
                 """Fallback: return empty dict."""
                 return {}
@@ -150,29 +149,39 @@ def prove_lock(
         wallet = load_wallet(coldkey, hotkey)
         hotkey_ss58 = wallet.hotkey.ss58_address
 
-        console.print(f"\n[bold cyan]Step 1: Checking registration...[/]")
+        console.print(f"\n[bold cyan]Checking registration...[/]")
         console.print(f"[dim]Hotkey:[/] {hotkey_ss58}")
 
-        # Step 2: Check registration via verifier
+        # Step 2: Check registration via Bittensor network (same as other commands)
         try:
-            reg_result = check_registration(hotkey=hotkey_ss58)
-            if not reg_result.get("registered"):
-                console.print("[bold red]Error:[/] Hotkey is not registered on subnet 35")
-                if reg_result.get("uid") is not None:
-                    console.print(
-                        f"[yellow]Note:[/] UID {reg_result['uid']} exists but belongs to a different hotkey"
-                    )
+            with console.status(
+                "[bold cyan]Checking miner registration status...[/]",
+                spinner="dots",
+            ):
+                uid = get_uid_from_hotkey(
+                    network=settings.network,
+                    netuid=settings.netuid,
+                    hotkey=hotkey_ss58,
+                )
+
+            if uid is None:
+                console.print(
+                    "[bold red]Error:[/] Hotkey is not registered or has been deregistered "
+                    f"on netuid {settings.netuid} ({settings.network} network)."
+                )
+                console.print(
+                    "[yellow]Please register your hotkey first using 'cartha miner register'.[/]"
+                )
                 raise typer.Exit(code=1)
 
-            uid = reg_result["uid"]
             console.print(f"[bold green]✓ Registered[/] - UID: {uid}")
-        except VerifierError as exc:
-            exit_with_error(f"Failed to check registration: {exc}")
+        except typer.Exit:
+            raise
         except Exception as exc:
             handle_unexpected_exception("Registration check failed", exc)
 
         # Step 3: Generate Bittensor signature for authentication
-        console.print(f"\n[bold cyan]Step 2: Authenticating with Bittensor hotkey...[/]")
+        console.print(f"\n[bold cyan]Authenticating with Bittensor hotkey...[/]")
         try:
             auth_payload = build_pair_auth_payload(
                 network=settings.network,
@@ -205,7 +214,7 @@ def prove_lock(
             handle_unexpected_exception("Authentication failed", exc)
 
         # Step 5: Collect lock parameters
-        console.print(f"\n[bold cyan]Step 3: Collecting lock parameters...[/]")
+        console.print(f"\n[bold cyan]Collecting lock parameters...[/]")
 
         # Chain ID
         if chain is None:
@@ -243,7 +252,7 @@ def prove_lock(
                     console.print(f"  - {pool_name}: {format_pool_id(pool_id_hex)}")
                 console.print()
 
-            while True:
+        while True:
                 pool_input = typer.prompt(
                     "Pool ID (name or hex string)", show_default=False
                 )
@@ -276,7 +285,7 @@ def prove_lock(
             pool_id = "0x" + pool_id
         pool_id = pool_id.lower()
 
-        # Amount
+    # Amount
         amount_base_units: int | None = None
         if amount is None:
             while True:
@@ -339,7 +348,7 @@ def prove_lock(
             owner = Web3.to_checksum_address(owner)
 
         # Step 6: Request EIP-712 LockRequest signature from verifier
-        console.print(f"\n[bold cyan]Step 4: Requesting signature from verifier...[/]")
+        console.print(f"\n[bold cyan]Requesting signature from verifier...[/]")
         try:
             sig_result = request_lock_signature(
                 session_token=session_token,
@@ -406,7 +415,7 @@ def prove_lock(
             raise typer.Exit(code=0)
 
         # Step 8: Display transaction data
-        console.print(f"\n[bold cyan]Step 5: Transaction Data[/]")
+        console.print(f"\n[bold cyan]Transaction Data[/]")
         console.print(
             "\n[bold yellow]⚠️  Execute these transactions in MetaMask:[/]\n"
         )

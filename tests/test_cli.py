@@ -130,10 +130,7 @@ def test_register_command_success(monkeypatch):
     monkeypatch.setattr(
         "cartha_cli.commands.register.register_hotkey", fake_register_hotkey
     )
-    monkeypatch.setattr(
-        "cartha_cli.commands.register.build_pair_auth_payload", fake_auth_payload
-    )
-    # Note: register_pair_password removed - new lock flow uses session tokens instead
+    # Note: build_pair_auth_payload and register_pair_password removed - new lock flow uses session tokens instead
 
     def fake_get_wallet(*args, **kwargs):
         return DummyWallet()

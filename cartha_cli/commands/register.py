@@ -15,7 +15,6 @@ from ..bt import (
 )
 from ..config import settings
 from ..display import display_clock_and_countdown
-from ..pair import build_pair_auth_payload
 from ..verifier import VerifierError
 from .common import (
     console,
@@ -54,7 +53,11 @@ def register(
         False, "--cuda", help="Enable CUDA for PoW registration."
     ),
 ) -> None:
-    """Register the specified hotkey on the target subnet and print the UID."""
+    """Register the specified hotkey on the target subnet and print the UID.
+    
+    ⚠️  Note: Password generation is no longer supported. The new lock flow uses 
+    session tokens instead of passwords. Use 'cartha vault lock' to create lock positions.
+    """
 
     assert wallet_name is not None  # nosec - enforced by Typer prompt
     assert wallet_hotkey is not None  # nosec - enforced by Typer prompt
@@ -196,28 +199,25 @@ def register(
 
     if result.uid is not None:
         slot_uid = str(result.uid)
-        try:
-            auth_payload = build_pair_auth_payload(
-                network=network,
-                netuid=netuid,
-                slot=slot_uid,
-                hotkey=result.hotkey,
-                wallet_name=wallet_name,
-                wallet_hotkey=wallet_hotkey,
-                skip_metagraph_check=True,
-            )
-        except typer.Exit:
-            # challenge build failed; already reported.
-            return
-
-        # Note: Password registration removed - new lock flow uses session tokens instead
+        console.print()
         console.print(
             "[bold green]✓ Registration complete![/] "
             f"Hotkey: {result.hotkey}, Slot UID: {slot_uid}"
         )
+        console.print()
+        console.print(
+            "[bold cyan]Next steps:[/]"
+        )
+        console.print(
+            "  • Use [green]cartha vault lock[/] to create a lock position"
+        )
+        console.print(
+            "  • Use [green]cartha miner status[/] to check your miner status"
+        )
+        console.print()
         console.print(
             "[dim]Note: The new lock flow uses session tokens instead of passwords. "
-            "Use 'cartha vault lock' to create a lock position.[/]"
+            "Password generation is no longer supported.[/]"
         )
     else:
         console.print(

@@ -60,18 +60,22 @@ def miner_password(
         False, "--json", help="Emit the raw JSON response."
     ),
 ) -> None:
-    """DEPRECATED: Show your miner password (requires authentication).
+    """DEPRECATED: View your existing miner password (requires authentication).
 
     ⚠️  This command is deprecated. The new lock flow uses session tokens instead of passwords.
     Passwords were only used in the old LockProof flow, which has been replaced.
 
-    This command requires signing a challenge message to prove ownership.
-    If no password exists, you'll be prompted to create one.
+    This command allows you to VIEW existing passwords only. Password generation is no longer supported.
+    Use 'cartha vault lock' to create new lock positions with the new flow.
     """
     console.print(
         "[bold yellow]⚠️  DEPRECATED:[/] The miner password command is deprecated. "
-        "The new lock flow uses session tokens instead of passwords. "
-        "Use 'cartha vault lock' for the new lock flow."
+        "The new lock flow uses session tokens instead of passwords."
+    )
+    console.print()
+    console.print(
+        "[dim]This command allows you to VIEW existing passwords only. "
+        "Password generation is no longer supported.[/]"
     )
     console.print()
     
@@ -197,39 +201,28 @@ def miner_password(
         handle_unexpected_exception("Unable to fetch password", exc)
 
     initial_status = dict(status)
-    password_payload: dict[str, Any] | None = None
-
     existing_pwd = initial_status.get("pwd")
     state = initial_status.get("state") or "unknown"
     has_pwd_flag = initial_status.get("has_pwd") or bool(existing_pwd)
 
-    needs_password = state in ("unknown", "pending") and not json_output
-    if has_pwd_flag:
-        needs_password = False
-
-    if needs_password:
-        if state == "unknown":
-            console.print(
-                "[bold yellow]Verifier has no password record for this slot yet.[/]"
-            )
-        else:
-            console.print(
-                "[bold yellow]Pair is registered but no verifier password has been issued yet.[/]"
-            )
-        if not typer.confirm("Generate a password now?", default=True):
-            console.print(
-                "[bold yellow]Password generation skipped. Run this command again whenever you're ready.[/]"
-            )
-            raise typer.Exit(code=0)
-
-        # Note: Password registration removed - new lock flow uses session tokens instead
+    # Password generation is deprecated - only allow viewing existing passwords
+    if not has_pwd_flag and not json_output:
+        console.print()
         console.print(
-            "[bold yellow]⚠️  Password registration is no longer supported.[/] "
-            "The new lock flow uses session tokens instead of passwords. "
-            "Use 'cartha vault lock' to create a lock position."
+            "[bold yellow]⚠️  No password found for this miner.[/]"
         )
-        # Keep the existing status for display purposes (may have password from old flow)
-        password_payload = None
+        console.print()
+        console.print(
+            "[dim]Password generation is no longer supported. "
+            "The new lock flow uses session tokens instead of passwords.[/]"
+        )
+        console.print()
+        console.print(
+            "[bold cyan]To create a lock position, use the new lock flow:[/]"
+        )
+        console.print("  [green]cartha vault lock[/] --coldkey <name> --hotkey <name> --pool-id <pool> --amount <amount> --lock-days <days> --owner-evm <address> --chain-id <chain> --vault-address <vault>")
+        console.print()
+        raise typer.Exit(code=0)
 
     sanitized = dict(status)
     sanitized.setdefault("state", "unknown")
