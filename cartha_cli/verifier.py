@@ -248,7 +248,7 @@ def get_lock_status(
     return _request(
         "GET",
         "/lock/status",
-        params={"txHash": tx_hash},
+        params={"tx_hash": tx_hash},  # Match endpoint parameter name (snake_case)
     )
 
 

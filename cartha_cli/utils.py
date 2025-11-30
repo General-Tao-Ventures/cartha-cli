@@ -17,8 +17,14 @@ console = typer.get_current().console if hasattr(typer, "get_current") else None
 
 
 def normalize_hex(value: str, prefix: str = "0x") -> str:
-    """Normalize hex string to ensure it has the correct prefix."""
+    """Normalize hex string to ensure it has the correct prefix.
+    
+    Handles common mistakes like "Ox" (capital O) -> "0x" (zero).
+    """
     value = value.strip()
+    # Fix common mistake: "Ox" (capital O) -> "0x" (zero)
+    if value.startswith("Ox") or value.startswith("OX"):
+        value = "0x" + value[2:]
     if not value.startswith(prefix):
         value = prefix + value
     return value

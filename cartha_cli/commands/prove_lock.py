@@ -10,6 +10,7 @@ from typing import Any
 import typer
 from rich import box
 from rich.prompt import Confirm
+from rich.status import Status
 from rich.table import Table
 from web3 import Web3
 
@@ -434,7 +435,7 @@ def prove_lock(
             "[bold yellow]⚠️  After executing the transactions, the verifier will automatically detect the lock.[/]"
         )
         console.print(
-            "[dim]You can check status with: cartha-vault lock-status --tx <tx_hash>[/]"
+            "[dim]The verifier will automatically detect the lock after you execute the transactions.[/]"
         )
 
         # Step 9: Optionally poll for status
@@ -453,54 +454,70 @@ def prove_lock(
                     "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
                 )
 
-            console.print("\n[bold cyan]Polling for lock status...[/]")
+            console.print()  # Empty line before polling
             max_polls = 30
             poll_interval = 5  # seconds
 
-            for poll_num in range(max_polls):
-                try:
-                    status_result = get_lock_status(tx_hash=tx_hash_normalized)
-                    if status_result.get("verified"):
-                        console.print("\n[bold green]✓ Lock verified![/]")
-                        console.print(
-                            f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
+            with Status(
+                "[bold cyan]Polling for lock status...[/]",
+                console=console,
+                spinner="dots",
+            ) as status:
+                for poll_num in range(max_polls):
+                    try:
+                        status.update(
+                            f"[bold cyan]Checking lock status... (attempt {poll_num + 1}/{max_polls})[/]"
                         )
-                        console.print(
-                            f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
-                        )
-                        break
-                    else:
-                        if poll_num < max_polls - 1:
+                        status_result = get_lock_status(tx_hash=tx_hash_normalized)
+                        if status_result.get("verified"):
+                            status.stop()
+                            console.print("\n[bold green]✓ Lock verified![/]")
                             console.print(
-                                f"[dim]Waiting for verification... ({poll_num + 1}/{max_polls})[/]"
+                                f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
+                            )
+                            console.print(
+                                f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
+                            )
+                            break
+                        else:
+                            if poll_num < max_polls - 1:
+                                status.update(
+                                    f"[bold cyan]Waiting for verification... (attempt {poll_num + 1}/{max_polls})[/]"
+                                )
+                                time.sleep(poll_interval)
+                            else:
+                                status.stop()
+                                console.print(
+                                    "\n[yellow]Lock not yet verified. The verifier will process it automatically.[/]"
+                                )
+                                console.print(
+                                    f"[dim]Message: {status_result.get('message', 'N/A')}[/]"
+                                )
+                    except VerifierError as exc:
+                        if poll_num < max_polls - 1:
+                            # Truncate long error messages to keep single line clean
+                            error_msg = str(exc)
+                            if len(error_msg) > 50:
+                                error_msg = error_msg[:47] + "..."
+                            status.update(
+                                f"[yellow]Retrying... (attempt {poll_num + 1}/{max_polls})[/] [dim]{error_msg}[/]"
                             )
                             time.sleep(poll_interval)
                         else:
+                            status.stop()
                             console.print(
-                                "\n[yellow]Lock not yet verified. The verifier will process it automatically.[/]"
+                                f"\n[yellow]Final status check failed: {exc}[/]"
                             )
                             console.print(
-                                f"[dim]Message: {status_result.get('message', 'N/A')}[/]"
+                                "[dim]The verifier will process the lock automatically.[/]"
                             )
-                except VerifierError as exc:
-                    if poll_num < max_polls - 1:
-                        console.print(
-                            f"[yellow]Status check failed (will retry): {exc}[/]"
-                        )
-                        time.sleep(poll_interval)
-                    else:
-                        console.print(
-                            f"\n[yellow]Final status check failed: {exc}[/]"
-                        )
+                    except Exception as exc:
+                        status.stop()
+                        console.print(f"\n[yellow]Status check error: {exc}[/]")
                         console.print(
                             "[dim]The verifier will process the lock automatically.[/]"
                         )
-                except Exception as exc:
-                    console.print(f"\n[yellow]Status check error: {exc}[/]")
-                    console.print(
-                        "[dim]The verifier will process the lock automatically.[/]"
-                    )
-                    break
+                        break
 
         console.print("\n[bold green]✓ Lock flow complete![/]")
 
