@@ -326,6 +326,50 @@ cartha vault lock \
 
 **Note**: You'll need to execute the `USDC.approve` and `CarthaVault.lock` transactions in MetaMask (or your EVM wallet) using the transaction data displayed by the CLI.
 
+#### Troubleshooting
+
+##### Signature Mismatch / Funds Locked But Not Credited
+
+If you request a new signature after already requesting one, the old signature becomes invalid. If you execute a transaction using an old signature:
+
+- ✅ **Transaction will succeed** - Your funds are safely locked in the vault contract
+- ❌ **Miner won't be credited** - The verifier won't automatically match the transaction to your miner
+
+**What to do:**
+
+1. **Open a support ticket** on our Discord channel
+
+2. **Provide the following information:**
+   - Transaction hash (0x...)
+   - Your Bittensor hotkey (SS58 address)
+   - Your miner slot UID
+   - Chain ID and vault address
+   - Pool ID
+   - EVM address (owner address)
+
+3. **Prove ownership with signatures:**
+   
+   **Bittensor Hotkey Signature:**
+   ```bash
+   btcli w sign --wallet.name <your-coldkey> --wallet.hotkey <your-hotkey> --text "Cartha lock recovery: <tx-hash>"
+   ```
+   Provide both the signature and the message text.
+   
+   **EVM Address Signature:**
+   Sign the following message with MetaMask or your Web3 wallet:
+   ```
+   Cartha lock recovery: <tx-hash>
+   ```
+   Provide both the signature and the message text.
+
+4. **Admin will verify signatures** and manually recover your lock to credit your miner
+
+**Prevention:**
+
+- Always use the **most recent signature** from `cartha vault lock`
+- If you request a new signature, discard the old one
+- Don't execute transactions with old signatures after requesting new ones
+
 ---
 
 ## Other Commands
@@ -420,24 +464,29 @@ CARTHA_NETUID=35
    ```
    Use this only when you need to view or create your password.
 
-### Submitting a Lock Proof
+### Creating a Lock Position
 
-1. **Make your USDC deposit** to the vault contract on-chain
-
-2. **Submit the lock proof:**
+1. **Request signature and execute transaction:**
    ```bash
    cartha vault lock \
-     --chain 8453 \
-     --vault 0xVAULT \
-     --tx 0xTXHASH \
-     --amount 250 \
-     --hotkey bt1... \
-     --slot 123 \
-     --miner-evm 0xEVMADDR \
-     --pwd 0xPAIRPWD
+     --coldkey my-coldkey \
+     --hotkey my-hotkey \
+     --pool-id BTC/USD \
+     --amount 250.0 \
+     --lock-days 30 \
+     --owner-evm 0xYourEVMAddress \
+     --chain-id 8453 \
+     --vault-address 0xVaultAddress
    ```
 
-3. The CLI will guide you through signing (local or external)
+2. **Execute transactions in MetaMask** using the transaction data displayed by the CLI
+
+3. **Wait for auto-detection** - The verifier will automatically detect your `LockCreated` event and add you to the upcoming epoch
+
+**⚠️ Important:** If you request a new signature after already requesting one, make sure to use the **newest signature only**. Using an old signature will lock your funds but won't credit your miner automatically. In this case, open a support ticket on Discord for manual recovery. You'll need to provide:
+- Transaction hash and all lock details
+- Bittensor hotkey signature (via `btcli w sign`)
+- EVM address signature (via MetaMask or Web3 wallet)
 
 ### Checking Pool Status and Expiration
 
