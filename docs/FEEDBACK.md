@@ -89,14 +89,55 @@ If you encounter registration problems:
 - Note wallet and hotkey names (redact sensitive parts)
 - Include network and netuid
 
-### Lock Proof Issues
+### Lock Issues
 
-If you have problems with lock proofs:
+If you have problems with the lock flow:
 
-- Include the `build_lock_proof.py` output (redact sensitive data)
-- Share the `prove-lock` command used
+- Include the CLI command output (redact sensitive data)
+- Share the `cartha vault lock` command used
 - Include error messages from the verifier
+- Include transaction hashes if available
 - Note if using testnet or mainnet
+
+#### Signature Mismatch / Funds Locked But Not Credited
+
+If you executed a transaction using an old signature after requesting a new one:
+
+1. **Open a support ticket** on Discord (see links above)
+
+2. **Provide the following information:**
+   - Transaction hash (0x...)
+   - Your Bittensor hotkey (SS58 address)
+   - Your miner slot UID
+   - Chain ID and vault address
+   - Pool ID
+   - EVM address (owner address)
+
+3. **Prove ownership with signatures:**
+
+   **Bittensor Hotkey Signature:**
+
+   Generate a signature proving you own the hotkey:
+
+   ```bash
+   btcli w sign --wallet.name <your-coldkey> --wallet.hotkey <your-hotkey> --text "Cartha lock recovery: <tx-hash>"
+   ```
+
+   Provide both the signature output and the message text you signed.
+
+   **EVM Address Signature:**
+
+   Sign the following message with MetaMask or your Web3 wallet:
+
+   ```text
+   Cartha lock recovery: <tx-hash>
+   ```
+
+   Provide both the signature (from MetaMask's signature output) and the message text.
+
+4. **Admin will verify signatures** to confirm ownership, then manually recover your lock and credit your miner
+
+**Note:** Your funds are safe - they're locked in the vault contract. The issue is that the verifier needs to manually match the transaction to your miner. The signatures are required to prove you own both the hotkey and EVM address before recovery can proceed.
 
 ### Pair Password Issues
 

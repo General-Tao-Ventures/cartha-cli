@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import requests  # type: ignore[import-untyped]
@@ -28,38 +29,97 @@ def _request(
     *,
     params: dict[str, Any] | None = None,
     json_data: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+    retry: bool = True,
 ) -> dict[str, Any]:
-    headers: dict[str, str] = {"Accept": "application/json"}
+    """Make HTTP request with automatic retry logic.
+    
+    Args:
+        method: HTTP method (GET, POST, etc.)
+        path: API path
+        params: Query parameters
+        json_data: JSON body for POST requests
+        headers: Additional headers
+        retry: Whether to retry on transient failures (default: True)
+        
+    Returns:
+        Response JSON data as dict
+        
+    Raises:
+        VerifierError: If request fails after retries
+    """
+    request_headers: dict[str, str] = {"Accept": "application/json"}
+    if headers:
+        request_headers.update(headers)
     url = _build_url(path)
 
-    try:
-        # Use separate connection and read timeouts
-        # Connection timeout: 5s (fast fail if can't connect)
-        # Read timeout: 60s (allow time for response to arrive after connection established)
-        # This helps when verifier processes quickly but response transmission is slow
-        response = requests.request(
-            method,
-            url,
-            params=params,
-            json=json_data,
-            headers=headers,
-            timeout=(5, 60),  # (connect_timeout, read_timeout) in seconds
-        )
-    except requests.Timeout as exc:
-        # Explicitly handle timeout - request took longer than allowed
-        # This could be connection timeout (5s) or read timeout (60s)
-        error_msg = (
-            f"Request to verifier timed out: {url}\n"
-            "This is a CLI-side timeout.\n"
-            "If verifier logs show request completed, this is likely slow network response transmission.\n"
-            "Possible causes: network latency, large response size, or slow connection.\n"
-            "Tip: Try again in a moment or check verifier logs to confirm request was processed."
-        )
-        raise VerifierError(error_msg) from exc
-    except requests.RequestException as exc:  # pragma: no cover - network failure
-        # Provide more context about the failed URL
-        error_msg = f"Failed to reach verifier at {url}: {exc}"
-        raise VerifierError(error_msg) from exc
+    max_attempts = settings.retry_max_attempts if retry else 1
+    backoff_factor = settings.retry_backoff_factor
+    retry_statuses = settings.retry_on_status
+
+    last_exception: Exception | None = None
+    response: requests.Response | None = None
+    
+    for attempt in range(max_attempts):
+        try:
+            # Use separate connection and read timeouts
+            # Connection timeout: 5s (fast fail if can't connect)
+            # Read timeout: 60s (allow time for response to arrive after connection established)
+            # This helps when verifier processes quickly but response transmission is slow
+            response = requests.request(
+                method,
+                url,
+                params=params,
+                json=json_data,
+                headers=request_headers,
+                timeout=(5, 60),  # (connect_timeout, read_timeout) in seconds
+            )
+            
+            # Check if we should retry based on status code
+            if retry and attempt < max_attempts - 1 and response.status_code in retry_statuses:
+                wait_time = backoff_factor ** attempt
+                time.sleep(wait_time)
+                continue  # Retry the request
+            
+            # If we get here, either success or non-retryable error - break and process
+            break
+            
+        except requests.Timeout as exc:
+            last_exception = exc
+            # Retry timeouts if we have attempts left
+            if retry and attempt < max_attempts - 1:
+                wait_time = backoff_factor ** attempt
+                time.sleep(wait_time)
+                continue
+            
+            # Explicitly handle timeout - request took longer than allowed
+            # This could be connection timeout (5s) or read timeout (60s)
+            error_msg = (
+                f"Request to verifier timed out after {max_attempts} attempt(s): {url}\n"
+                "This is a CLI-side timeout.\n"
+                "If verifier logs show request completed, this is likely slow network response transmission.\n"
+                "Possible causes: network latency, large response size, or slow connection.\n"
+                "Tip: Try again in a moment or check verifier logs to confirm request was processed."
+            )
+            raise VerifierError(error_msg) from exc
+        except requests.RequestException as exc:  # pragma: no cover - network failure
+            last_exception = exc
+            # Retry network errors if we have attempts left
+            if retry and attempt < max_attempts - 1:
+                wait_time = backoff_factor ** attempt
+                time.sleep(wait_time)
+                continue
+            
+            # Provide more context about the failed URL
+            error_msg = f"Failed to reach verifier at {url} after {max_attempts} attempt(s): {exc}"
+            raise VerifierError(error_msg) from exc
+    
+    # If we exhausted retries without getting a response, raise the last exception
+    if response is None and last_exception:
+        raise VerifierError(f"Request failed after {max_attempts} attempts: {last_exception}") from last_exception
+    
+    # Process the response (response should be set at this point)
+    assert response is not None  # nosec - response should be set if we got here
 
     try:
         data = response.json()
@@ -145,68 +205,122 @@ def fetch_pair_status(
     )
 
 
-def fetch_pair_password(
+# REMOVED: fetch_pair_password and register_pair_password
+# These functions are no longer needed - the new lock flow uses session tokens instead of passwords.
+# The verifier endpoints /v1/pair/password/* have been removed.
+
+
+def check_registration(
     *,
     hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    message: str,
-    signature: str,
+    miner_slot: str | None = None,
+    uid: str | None = None,
 ) -> dict[str, Any]:
-    """Fetch the pair password via the secured endpoint."""
+    """Check if a hotkey is registered on subnet 35.
+    
+    Returns: {registered: bool, uid: int | None}
+    """
+    params: dict[str, Any] = {"hotkey": hotkey}
+    if miner_slot is not None:
+        params["minerSlot"] = miner_slot
+    if uid is not None:
+        params["uid"] = uid
+    return _request(
+        "GET",
+        "/subnet/check-registration",
+        params=params,
+    )
+
+
+def verify_hotkey(
+    *,
+    hotkey: str,
+    signature: str,
+    message: str,
+) -> dict[str, Any]:
+    """Verify Bittensor hotkey signature and get session token.
+    
+    Returns: {verified: bool, session_token: str, expires_at: int}
+    """
     payload = {
         "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": message,
         "signature": signature,
+        "message": message,
     }
     return _request(
         "POST",
-        "/v1/pair/password/retrieve",
+        "/auth/verify-hotkey",
         json_data=payload,
     )
 
 
-def register_pair_password(
+def request_lock_signature(
     *,
+    session_token: str,
+    pool_id: str,
+    amount: int,
+    lock_days: int,
     hotkey: str,
-    slot: str,
-    network: str,
-    netuid: int,
-    message: str,
-    signature: str,
+    miner_slot: str | None,
+    uid: str | None,
+    owner: str,
+    chain_id: int,
+    vault_address: str,
 ) -> dict[str, Any]:
+    """Request EIP-712 LockRequest signature from verifier.
+    
+    Returns: {signature, timestamp, nonce, expiresAt, approveTx, lockTx}
+    """
     payload = {
+        "poolId": pool_id,
+        "amount": amount,
+        "lockDays": lock_days,
         "hotkey": hotkey,
-        "slot": slot,
-        "network": network,
-        "netuid": netuid,
-        "message": message,
-        "signature": signature,
+        "owner": owner,
+        "chainId": chain_id,
+        "vaultAddress": vault_address,
     }
+    if miner_slot is not None:
+        payload["minerSlot"] = miner_slot
+    if uid is not None:
+        payload["uid"] = uid
+    
+    headers = {"Authorization": f"Bearer {session_token}"}
     return _request(
         "POST",
-        "/v1/pair/password/register",
+        "/lock/request-signature",
         json_data=payload,
+        headers=headers,
     )
 
 
-def submit_lock_proof(payload: dict[str, Any]) -> dict[str, Any]:
-    """Submit a lock proof to the verifier."""
+def get_lock_status(
+    *,
+    tx_hash: str,
+) -> dict[str, Any]:
+    """Check status of a lock transaction.
+    
+    Returns: {verified: bool, lockId: str | None, addedToEpoch: str | None, message: str | None}
+    """
     return _request(
-        "POST",
-        "/v1/proofs/lock",
-        json_data=payload,
+        "GET",
+        "/lock/status",
+        params={"tx_hash": tx_hash},  # Match endpoint parameter name (snake_case)
     )
+
+
+# REMOVED: Old endpoints - replaced by new lock flow
+# fetch_pair_password, register_pair_password, submit_lock_proof removed
 
 
 __all__ = [
     "VerifierError",
+    "_build_url",
+    "_request",
     "fetch_pair_status",
-    "fetch_pair_password",
-    "register_pair_password",
-    "submit_lock_proof",
+    "fetch_miner_status",
+    "check_registration",
+    "verify_hotkey",
+    "request_lock_signature",
+    "get_lock_status",
 ]

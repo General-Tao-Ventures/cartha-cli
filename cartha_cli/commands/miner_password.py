@@ -12,10 +12,9 @@ from ..config import settings
 from ..pair import (
     build_pair_auth_payload,
     get_uid_from_hotkey,
-    request_pair_status_or_password,
 )
 from ..utils import format_timestamp
-from ..verifier import VerifierError, register_pair_password
+from ..verifier import VerifierError, fetch_pair_status
 from ..wallet import load_wallet
 from .common import (
     console,
@@ -61,11 +60,25 @@ def miner_password(
         False, "--json", help="Emit the raw JSON response."
     ),
 ) -> None:
-    """Show your miner password (requires authentication).
+    """DEPRECATED: View your existing miner password (requires authentication).
 
-    This command requires signing a challenge message to prove ownership.
-    If no password exists, you'll be prompted to create one.
+    ⚠️  This command is deprecated. The new lock flow uses session tokens instead of passwords.
+    Passwords were only used in the old LockProof flow, which has been replaced.
+
+    This command allows you to VIEW existing passwords only. Password generation is no longer supported.
+    Use 'cartha vault lock' to create new lock positions with the new flow.
     """
+    console.print(
+        "[bold yellow]⚠️  DEPRECATED:[/] The miner password command is deprecated. "
+        "The new lock flow uses session tokens instead of passwords."
+    )
+    console.print()
+    console.print(
+        "[dim]This command allows you to VIEW existing passwords only. "
+        "Password generation is no longer supported.[/]"
+    )
+    console.print()
+    
     try:
         console.print("[bold cyan]Loading wallet...[/]")
         wallet = load_wallet(wallet_name, wallet_hotkey, None)
@@ -135,13 +148,13 @@ def miner_password(
             "[bold cyan]Verifying ownership with Cartha verifier...[/]",
             spinner="dots",
         ):
-            status = request_pair_status_or_password(
-                mode="status",
+            status = fetch_pair_status(
                 hotkey=hotkey,
                 slot=slot_id,
                 network=network,
                 netuid=netuid,
-                auth_payload=auth_payload,
+                message=auth_payload["message"],
+                signature=auth_payload["signature"],
             )
     except bt.KeyFileError as exc:
         handle_wallet_exception(
@@ -188,86 +201,28 @@ def miner_password(
         handle_unexpected_exception("Unable to fetch password", exc)
 
     initial_status = dict(status)
-    password_payload: dict[str, Any] | None = None
-
     existing_pwd = initial_status.get("pwd")
     state = initial_status.get("state") or "unknown"
     has_pwd_flag = initial_status.get("has_pwd") or bool(existing_pwd)
 
-    needs_password = state in ("unknown", "pending") and not json_output
-    if has_pwd_flag:
-        needs_password = False
-
-    if needs_password:
-        if state == "unknown":
-            console.print(
-                "[bold yellow]Verifier has no password record for this slot yet.[/]"
-            )
-        else:
-            console.print(
-                "[bold yellow]Pair is registered but no verifier password has been issued yet.[/]"
-            )
-        if not typer.confirm("Generate a password now?", default=True):
-            console.print(
-                "[bold yellow]Password generation skipped. Run this command again whenever you're ready.[/]"
-            )
-            raise typer.Exit(code=0)
-
-        try:
-            with console.status(
-                "[bold cyan]Requesting password issuance from Cartha verifier...[/]",
-                spinner="dots",
-            ):
-                password_payload = register_pair_password(
-                    hotkey=hotkey,
-                    slot=slot_id,
-                    network=network,
-                    netuid=netuid,
-                    message=auth_payload["message"],
-                    signature=auth_payload["signature"],
-                )
-        except VerifierError as exc:
-            message = str(exc)
-            if exc.status_code == 504 or "timeout" in message.lower():
-                console.print(
-                    "[bold yellow]Password generation timed out[/]: run 'cartha miner password' again in ~1 minute."
-                )
-            else:
-                console.print(f"[bold red]Password generation failed[/]: {message}")
-            raise typer.Exit(code=1) from None
-        except typer.Exit:
-            raise
-        except Exception as exc:
-            handle_unexpected_exception(
-                "Verifier password generation failed unexpectedly", exc
-            )
-
-        console.print("[bold green]Pair password issued.[/]")
-
-        try:
-            with console.status(
-                "[bold cyan]Refreshing password...[/]",
-                spinner="dots",
-            ):
-                status = request_pair_status_or_password(
-                    mode="status",
-                    hotkey=hotkey,
-                    slot=slot_id,
-                    network=network,
-                    netuid=netuid,
-                    auth_payload=auth_payload,
-                )
-        except VerifierError as exc:
-            console.print(f"[bold yellow]Unable to refresh password[/]: {exc}")
-            status = initial_status
-            if state == "unknown":
-                status["state"] = "pending"
-            status["has_pwd"] = bool(password_payload and password_payload.get("pwd"))
-            if password_payload:
-                status["pwd"] = password_payload.get("pwd")
-                status["issued_at"] = password_payload.get("issued_at") or status.get(
-                    "issued_at"
-                )
+    # Password generation is deprecated - only allow viewing existing passwords
+    if not has_pwd_flag and not json_output:
+        console.print()
+        console.print(
+            "[bold yellow]⚠️  No password found for this miner.[/]"
+        )
+        console.print()
+        console.print(
+            "[dim]Password generation is no longer supported. "
+            "The new lock flow uses session tokens instead of passwords.[/]"
+        )
+        console.print()
+        console.print(
+            "[bold cyan]To create a lock position, use the new lock flow:[/]"
+        )
+        console.print("  [green]cartha vault lock[/] --coldkey <name> --hotkey <name> --pool-id <pool> --amount <amount> --lock-days <days> --owner-evm <address> --chain-id <chain> --vault-address <vault>")
+        console.print()
+        raise typer.Exit(code=0)
 
     sanitized = dict(status)
     sanitized.setdefault("state", "unknown")

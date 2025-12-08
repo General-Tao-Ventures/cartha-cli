@@ -15,8 +15,7 @@ from ..bt import (
 )
 from ..config import settings
 from ..display import display_clock_and_countdown
-from ..pair import build_pair_auth_payload
-from ..verifier import VerifierError, register_pair_password
+from ..verifier import VerifierError
 from .common import (
     console,
     handle_unexpected_exception,
@@ -54,7 +53,11 @@ def register(
         False, "--cuda", help="Enable CUDA for PoW registration."
     ),
 ) -> None:
-    """Register the specified hotkey on the target subnet and print the UID."""
+    """Register the specified hotkey on the target subnet and print the UID.
+    
+    ⚠️  Note: Password generation is no longer supported. The new lock flow uses 
+    session tokens instead of passwords. Use 'cartha vault lock' to create lock positions.
+    """
 
     assert wallet_name is not None  # nosec - enforced by Typer prompt
     assert wallet_hotkey is not None  # nosec - enforced by Typer prompt
@@ -196,65 +199,26 @@ def register(
 
     if result.uid is not None:
         slot_uid = str(result.uid)
-        try:
-            auth_payload = build_pair_auth_payload(
-                network=network,
-                netuid=netuid,
-                slot=slot_uid,
-                hotkey=result.hotkey,
-                wallet_name=wallet_name,
-                wallet_hotkey=wallet_hotkey,
-                skip_metagraph_check=True,
-            )
-        except typer.Exit:
-            # challenge build failed; already reported.
-            return
-
-        try:
-            with console.status(
-                "[bold cyan]Verifying registration with Cartha verifier[/] (this can take ~30-60 seconds while the network confirms ownership)...",
-                spinner="dots",
-            ):
-                try:
-                    password_payload = register_pair_password(
-                        hotkey=result.hotkey,
-                        slot=slot_uid,
-                        network=network,
-                        netuid=netuid,
-                        message=auth_payload["message"],
-                        signature=auth_payload["signature"],
-                    )
-                except VerifierError as exc:
-                    message = str(exc)
-                    if exc.status_code == 504 or "timeout" in message.lower():
-                        console.print(
-                            "[bold yellow]Password generation timed out[/]: run 'cartha miner status' in ~1 minute to check once the verifier completes."
-                        )
-                    else:
-                        console.print(
-                            f"[bold yellow]Unable to fetch pair password now[/]: {message}. Run 'cartha miner status' later to confirm."
-                        )
-                    return
-        except typer.Exit:
-            raise
-        except Exception as exc:
-            handle_unexpected_exception(
-                "Verifier password registration failed unexpectedly", exc
-            )
-
-        pair_pwd = password_payload.get("pwd")
-        if pair_pwd:
-            console.print(
-                f"[bold green]Pair password[/] for {result.hotkey}/{slot_uid}: [yellow]{pair_pwd}[/]"
-            )
-            console.print(
-                "[bold yellow]Keep it safe[/] — for your eyes only. Exposure might allow others to steal your locked USDC rewards."
-            )
-        else:
-            console.print(
-                "[bold yellow]Verifier did not return a pair password[/]. "
-                "Run 'cartha miner status' to check availability."
-            )
+        console.print()
+        console.print(
+            "[bold green]✓ Registration complete![/] "
+            f"Hotkey: {result.hotkey}, Slot UID: {slot_uid}"
+        )
+        console.print()
+        console.print(
+            "[bold cyan]Next steps:[/]"
+        )
+        console.print(
+            "  • Use [green]cartha vault lock[/] to create a lock position"
+        )
+        console.print(
+            "  • Use [green]cartha miner status[/] to check your miner status"
+        )
+        console.print()
+        console.print(
+            "[dim]Note: The new lock flow uses session tokens instead of passwords. "
+            "Password generation is no longer supported.[/]"
+        )
     else:
         console.print(
             "[bold yellow]UID not yet available[/] (node may still be syncing)."

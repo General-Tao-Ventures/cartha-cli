@@ -27,6 +27,9 @@ uv run cartha miner register --help
 # Check your miner status (no authentication needed)
 uv run cartha miner status --help
 
+# Check CLI health and connectivity
+uv run cartha health
+
 # Or use short aliases
 uv run cartha m status
 uv run cartha v lock
@@ -63,11 +66,26 @@ See all your active trading pairs, balances, and when they expire—all in one c
 
 ### Lock Your Funds
 
-After depositing USDC to a vault, lock it with:
+Create a new lock position with the streamlined lock flow:
 ```bash
-cartha vault lock --payload-file your-lock-proof.json
+cartha vault lock \
+  --coldkey your-wallet \
+  --hotkey your-hotkey \
+  --pool-id "BTC/USD" \
+  --amount 1000.0 \
+  --lock-days 30 \
+  --owner-evm 0xYourEVMAddress \
+  --chain-id 8453 \
+  --vault-address 0xVaultAddress
 # Or use: cartha v lock
 ```
+
+The CLI will:
+1. Check your registration on subnet 35
+2. Authenticate with your Bittensor hotkey
+3. Request a signed LockRequest from the verifier
+4. Display transaction data for you to execute in MetaMask
+5. Poll for lock status until verified
 
 ### View Your Password
 
@@ -77,6 +95,21 @@ cartha miner password --wallet-name your-wallet --wallet-hotkey your-hotkey
 ```
 
 **Tip:** Use `miner status` for daily checks—it's faster and doesn't require signing. Only use `miner password` when you actually need it.
+
+### Check Your Setup
+
+Verify your CLI is configured correctly and can reach all services:
+
+```bash
+cartha health
+```
+
+This checks:
+- Verifier connectivity and latency
+- Bittensor network connectivity
+- Configuration validation
+
+Use `cartha health --verbose` for detailed troubleshooting information.
 
 ## Need Help?
 

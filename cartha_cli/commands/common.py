@@ -67,6 +67,8 @@ def log_endpoint_banner() -> None:
     verifier_url = settings.verifier_url.lower()
     if verifier_url.startswith("http://127.0.0.1"):
         console.print("[bold cyan]Using local verifier endpoint[/]")
+    elif "pr-" in verifier_url:
+        console.print("[bold cyan]Using Cartha DEV network verifier[/]")
     elif "cartha-verifier-826542474079.us-central1.run.app" in verifier_url:
         console.print("[bold cyan]Using Cartha Testnet Verifier[/]")
     else:
