@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from .commands import (
+    health,
     miner_password,
     miner_status,
     pair_status,
@@ -142,6 +143,7 @@ def cli_root(
 
 # Register top-level commands
 app.command("version")(version.version_command)
+app.command("health")(health.health_check)
 
 
 def help_command() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 import requests  # type: ignore[import-untyped]
@@ -29,40 +30,96 @@ def _request(
     params: dict[str, Any] | None = None,
     json_data: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
+    retry: bool = True,
 ) -> dict[str, Any]:
+    """Make HTTP request with automatic retry logic.
+    
+    Args:
+        method: HTTP method (GET, POST, etc.)
+        path: API path
+        params: Query parameters
+        json_data: JSON body for POST requests
+        headers: Additional headers
+        retry: Whether to retry on transient failures (default: True)
+        
+    Returns:
+        Response JSON data as dict
+        
+    Raises:
+        VerifierError: If request fails after retries
+    """
     request_headers: dict[str, str] = {"Accept": "application/json"}
     if headers:
         request_headers.update(headers)
     url = _build_url(path)
 
-    try:
-        # Use separate connection and read timeouts
-        # Connection timeout: 5s (fast fail if can't connect)
-        # Read timeout: 60s (allow time for response to arrive after connection established)
-        # This helps when verifier processes quickly but response transmission is slow
-        response = requests.request(
-            method,
-            url,
-            params=params,
-            json=json_data,
-            headers=request_headers,
-            timeout=(5, 60),  # (connect_timeout, read_timeout) in seconds
-        )
-    except requests.Timeout as exc:
-        # Explicitly handle timeout - request took longer than allowed
-        # This could be connection timeout (5s) or read timeout (60s)
-        error_msg = (
-            f"Request to verifier timed out: {url}\n"
-            "This is a CLI-side timeout.\n"
-            "If verifier logs show request completed, this is likely slow network response transmission.\n"
-            "Possible causes: network latency, large response size, or slow connection.\n"
-            "Tip: Try again in a moment or check verifier logs to confirm request was processed."
-        )
-        raise VerifierError(error_msg) from exc
-    except requests.RequestException as exc:  # pragma: no cover - network failure
-        # Provide more context about the failed URL
-        error_msg = f"Failed to reach verifier at {url}: {exc}"
-        raise VerifierError(error_msg) from exc
+    max_attempts = settings.retry_max_attempts if retry else 1
+    backoff_factor = settings.retry_backoff_factor
+    retry_statuses = settings.retry_on_status
+
+    last_exception: Exception | None = None
+    response: requests.Response | None = None
+    
+    for attempt in range(max_attempts):
+        try:
+            # Use separate connection and read timeouts
+            # Connection timeout: 5s (fast fail if can't connect)
+            # Read timeout: 60s (allow time for response to arrive after connection established)
+            # This helps when verifier processes quickly but response transmission is slow
+            response = requests.request(
+                method,
+                url,
+                params=params,
+                json=json_data,
+                headers=request_headers,
+                timeout=(5, 60),  # (connect_timeout, read_timeout) in seconds
+            )
+            
+            # Check if we should retry based on status code
+            if retry and attempt < max_attempts - 1 and response.status_code in retry_statuses:
+                wait_time = backoff_factor ** attempt
+                time.sleep(wait_time)
+                continue  # Retry the request
+            
+            # If we get here, either success or non-retryable error - break and process
+            break
+            
+        except requests.Timeout as exc:
+            last_exception = exc
+            # Retry timeouts if we have attempts left
+            if retry and attempt < max_attempts - 1:
+                wait_time = backoff_factor ** attempt
+                time.sleep(wait_time)
+                continue
+            
+            # Explicitly handle timeout - request took longer than allowed
+            # This could be connection timeout (5s) or read timeout (60s)
+            error_msg = (
+                f"Request to verifier timed out after {max_attempts} attempt(s): {url}\n"
+                "This is a CLI-side timeout.\n"
+                "If verifier logs show request completed, this is likely slow network response transmission.\n"
+                "Possible causes: network latency, large response size, or slow connection.\n"
+                "Tip: Try again in a moment or check verifier logs to confirm request was processed."
+            )
+            raise VerifierError(error_msg) from exc
+        except requests.RequestException as exc:  # pragma: no cover - network failure
+            last_exception = exc
+            # Retry network errors if we have attempts left
+            if retry and attempt < max_attempts - 1:
+                wait_time = backoff_factor ** attempt
+                time.sleep(wait_time)
+                continue
+            
+            # Provide more context about the failed URL
+            error_msg = f"Failed to reach verifier at {url} after {max_attempts} attempt(s): {exc}"
+            raise VerifierError(error_msg) from exc
+    
+    # If we exhausted retries without getting a response, raise the last exception
+    if response is None and last_exception:
+        raise VerifierError(f"Request failed after {max_attempts} attempts: {last_exception}") from last_exception
+    
+    # Process the response (response should be set at this point)
+    assert response is not None  # nosec - response should be set if we got here
 
     try:
         data = response.json()
@@ -258,7 +315,10 @@ def get_lock_status(
 
 __all__ = [
     "VerifierError",
+    "_build_url",
+    "_request",
     "fetch_pair_status",
+    "fetch_miner_status",
     "check_registration",
     "verify_hotkey",
     "request_lock_signature",

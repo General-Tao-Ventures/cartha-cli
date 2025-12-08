@@ -28,6 +28,7 @@ def print_root_help() -> None:
     commands = Table(title="Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
     commands.add_row("[green]help[/]", "Show this help message.")
     commands.add_row("[green]version[/]", "Show CLI version.")
+    commands.add_row("[green]health[/]", "Check CLI health and connectivity.")
     commands.add_row(
         "[green]miner[/] [dim](or [green]m[/])[/]", "Miner management commands."
     )

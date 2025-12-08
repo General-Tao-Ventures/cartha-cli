@@ -27,6 +27,9 @@ uv run cartha miner register --help
 # Check your miner status (no authentication needed)
 uv run cartha miner status --help
 
+# Check CLI health and connectivity
+uv run cartha health
+
 # Or use short aliases
 uv run cartha m status
 uv run cartha v lock
@@ -92,6 +95,21 @@ cartha miner password --wallet-name your-wallet --wallet-hotkey your-hotkey
 ```
 
 **Tip:** Use `miner status` for daily checks—it's faster and doesn't require signing. Only use `miner password` when you actually need it.
+
+### Check Your Setup
+
+Verify your CLI is configured correctly and can reach all services:
+
+```bash
+cartha health
+```
+
+This checks:
+- Verifier connectivity and latency
+- Bittensor network connectivity
+- Configuration validation
+
+Use `cartha health --verbose` for detailed troubleshooting information.
 
 ## Need Help?
 
