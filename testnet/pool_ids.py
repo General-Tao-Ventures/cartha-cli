@@ -13,7 +13,7 @@ from __future__ import annotations
 POOL_MAPPINGS: dict[str, str] = {
     "BTCUSD": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489",  # BTC/USD (keccak256("BTC/USD"))
     "ETHUSD": "0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45",  # ETH/USD (keccak256("ETH/USD"))
-    # EUR/USD vault not yet deployed - will be added when available
+    "EURUSD": "0xa9226449042e36bf6865099eec57482aa55e3ad026c315a0e4a692b776c318ca",  # EUR/USD (keccak256("EUR/USD"))
 }
 
 # Reverse mapping (hex -> readable name)
