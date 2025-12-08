@@ -19,6 +19,57 @@ POOL_MAPPINGS: dict[str, str] = {
 # Reverse mapping (hex -> readable name)
 POOL_NAMES: dict[str, str] = {v.lower(): k for k, v in POOL_MAPPINGS.items()}
 
+# Pool ID to Vault Address mapping (Base Sepolia testnet)
+# Each pool ID has its own dedicated vault address
+VAULT_ADDRESSES: dict[str, str] = {
+    "BTCUSD": "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69",  # BTC/USD Vault
+    "ETHUSD": "0xdB74B44957A71c95406C316f8d3c5571FA588248",  # ETH/USD Vault
+    "EURUSD": "0x3C4dAfAC827140B8a031d994b7e06A25B9f27BAD",  # EUR/USD Vault
+}
+
+# Pool ID (hex) to Vault Address mapping
+POOL_ID_TO_VAULT: dict[str, str] = {
+    POOL_MAPPINGS["BTCUSD"].lower(): VAULT_ADDRESSES["BTCUSD"],
+    POOL_MAPPINGS["ETHUSD"].lower(): VAULT_ADDRESSES["ETHUSD"],
+    POOL_MAPPINGS["EURUSD"].lower(): VAULT_ADDRESSES["EURUSD"],
+}
+
+
+def pool_id_to_vault_address(pool_id: str) -> str | None:
+    """Get vault address for a given pool ID.
+    
+    Args:
+        pool_id: Pool ID in hex format (bytes32)
+        
+    Returns:
+        Vault address if found, None otherwise
+    """
+    pool_id_lower = pool_id.lower().strip()
+    if not pool_id_lower.startswith("0x"):
+        pool_id_lower = "0x" + pool_id_lower
+    
+    return POOL_ID_TO_VAULT.get(pool_id_lower)
+
+
+def vault_address_to_pool_id(vault_address: str) -> str | None:
+    """Get pool ID for a given vault address.
+    
+    Args:
+        vault_address: Vault contract address
+        
+    Returns:
+        Pool ID if found, None otherwise
+    """
+    vault_lower = vault_address.lower().strip()
+    if not vault_lower.startswith("0x"):
+        vault_lower = "0x" + vault_lower
+    
+    # Reverse lookup
+    for pool_id, vault in POOL_ID_TO_VAULT.items():
+        if vault.lower() == vault_lower:
+            return pool_id
+    return None
+
 
 def pool_name_to_id(pool_name: str) -> str:
     """Convert a readable pool name to hex pool ID.

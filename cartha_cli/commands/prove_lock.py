@@ -32,7 +32,9 @@ try:
         format_pool_id,
         list_pools,
         pool_id_to_name,
+        pool_id_to_vault_address,
         pool_name_to_id,
+        vault_address_to_pool_id,
     )
 except ImportError:
     # Fallback if running from different context
@@ -48,7 +50,9 @@ except ImportError:
                 format_pool_id,
                 list_pools,
                 pool_id_to_name,
+                pool_id_to_vault_address,
                 pool_name_to_id,
+                vault_address_to_pool_id,
             )
         except ImportError:
             # Final fallback
@@ -75,6 +79,22 @@ except ImportError:
             def list_pools() -> dict[str, str]:
                 """Fallback: return empty dict."""
                 return {}
+            
+            def pool_id_to_vault_address(pool_id: str) -> str | None:
+                """Fallback: return None."""
+                return None
+            
+            def vault_address_to_pool_id(vault_address: str) -> str | None:
+                """Fallback: return None."""
+                return None
+            
+            def pool_id_to_vault_address(pool_id: str) -> str | None:
+                """Fallback: return None."""
+                return None
+            
+            def vault_address_to_pool_id(vault_address: str) -> str | None:
+                """Fallback: return None."""
+                return None
 
 
 def prove_lock(
@@ -232,28 +252,24 @@ def prove_lock(
                 except ValueError:
                     console.print("[bold red]Error:[/] Chain ID must be a valid integer")
 
-        # Vault address
-        if vault is None:
-            while True:
-                vault = typer.prompt("Vault contract address", show_default=False)
-                if Web3.is_address(vault):
-                    vault = Web3.to_checksum_address(vault)
-                    break
-                console.print(
-                    "[bold red]Error:[/] Vault address must be a valid EVM address (0x...)"
-                )
-
-        # Pool ID
+        # Pool ID (collect first, then auto-match vault)
+        available_pools = list_pools()
         if pool_id is None:
             # Show available pools if we have them
-            available_pools = list_pools()
             if available_pools:
                 console.print("\n[bold cyan]Available pools:[/]")
                 for pool_name, pool_id_hex in sorted(available_pools.items()):
-                    console.print(f"  - {pool_name}: {format_pool_id(pool_id_hex)}")
+                    vault_addr = pool_id_to_vault_address(pool_id_hex)
+                    if vault_addr:
+                        console.print(
+                            f"  - {pool_name}: {format_pool_id(pool_id_hex)} "
+                            f"[dim](Vault: {vault_addr})[/]"
+                        )
+                    else:
+                        console.print(f"  - {pool_name}: {format_pool_id(pool_id_hex)}")
                 console.print()
 
-        while True:
+            while True:
                 pool_input = typer.prompt(
                     "Pool ID (name or hex string)", show_default=False
                 )
@@ -285,6 +301,48 @@ def prove_lock(
         if not pool_id.startswith("0x"):
             pool_id = "0x" + pool_id
         pool_id = pool_id.lower()
+
+        # Auto-match vault address from pool ID
+        if vault is None:
+            auto_vault = pool_id_to_vault_address(pool_id)
+            if auto_vault:
+                vault = Web3.to_checksum_address(auto_vault)
+                pool_name = pool_id_to_name(pool_id)
+                console.print(
+                    f"[bold green]✓ Auto-matched vault[/] - {pool_name or 'Pool'} → {vault}"
+                )
+            else:
+                # Fallback: prompt for vault if no mapping found
+                console.print(
+                    "[yellow]⚠ No vault mapping found for this pool ID. Please provide vault address.[/]"
+                )
+                while True:
+                    vault = typer.prompt("Vault contract address", show_default=False)
+                    if Web3.is_address(vault):
+                        vault = Web3.to_checksum_address(vault)
+                        break
+                    console.print(
+                        "[bold red]Error:[/] Vault address must be a valid EVM address (0x...)"
+                    )
+        else:
+            # Vault was provided, verify it matches pool ID if possible
+            if Web3.is_address(vault):
+                vault = Web3.to_checksum_address(vault)
+                expected_pool_id = vault_address_to_pool_id(vault)
+                if expected_pool_id and expected_pool_id.lower() != pool_id.lower():
+                    pool_name = pool_id_to_name(pool_id)
+                    expected_pool_name = pool_id_to_name(expected_pool_id)
+                    console.print(
+                        f"[bold yellow]⚠ Warning:[/] Vault {vault} is mapped to pool "
+                        f"{expected_pool_name or expected_pool_id}, but you selected "
+                        f"{pool_name or pool_id}"
+                    )
+                    if not Confirm.ask(
+                        "[yellow]Continue anyway?[/]", default=False
+                    ):
+                        raise typer.Exit(code=1)
+            else:
+                exit_with_error("Invalid vault address format")
 
     # Amount
         amount_base_units: int | None = None
@@ -418,15 +476,71 @@ def prove_lock(
         # Step 8: Display transaction data
         console.print(f"\n[bold cyan]Transaction Data[/]")
         console.print(
-            "\n[bold yellow]⚠️  Execute these transactions in MetaMask:[/]\n"
+            "\n[bold yellow]⚠️  Execute these transactions to complete your lock:[/]\n"
         )
 
-        console.print("[bold]1. Approve USDC:[/]")
+        # USDC contract address for Base Sepolia
+        usdc_contract_address = "0x2340D09c348930A76c8c2783EDa8610F699A51A8"
+        
+        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print("[bold]1. Approve USDC (via BaseScan)[/]")
+        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print()
+        console.print("[bold]Step-by-step instructions:[/]")
+        console.print("  1. Go to: [cyan]https://sepolia.basescan.org/address/0x2340D09c348930A76c8c2783EDa8610F699A51A8[/]")
+        console.print("  2. Click [bold]'Contract'[/] tab")
+        console.print("  3. Click [bold]'Write Contract'[/] tab")
+        console.print("  4. Find and click [bold]'1. approve'[/] function")
+        console.print("  5. Fill in the fields:")
+        console.print()
+        console.print("[bold]Contract Address (USDC):[/]")
+        console.print(f"   {usdc_contract_address}")
+        console.print()
+        console.print("[bold]Function: approve[/]")
+        console.print("[bold]Parameters:[/]")
+        console.print(f"   [yellow]spender[/] (address): {vault}")
+        console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
+        console.print()
+        console.print("  6. Click [bold]'Write'[/] and confirm in MetaMask")
+        console.print()
+        console.print("[dim]Alternative: Use MetaMask directly with this transaction data:[/]")
         console.print(f"   To: {approve_tx['to']}")
         console.print(f"   Data: {approve_tx['data']}")
         console.print()
 
-        console.print("[bold]2. Lock Position:[/]")
+        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print("[bold]2. Lock Position (via BaseScan)[/]")
+        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print()
+        # Verify vault address matches what we expect
+        if lock_tx['to'].lower() != vault.lower():
+            console.print(
+                f"[bold yellow]⚠ Warning:[/] Transaction vault address ({lock_tx['to']}) "
+                f"does not match selected vault ({vault})"
+            )
+        console.print("[bold]Vault Contract Address:[/]")
+        console.print(f"   {lock_tx['to']}")
+        console.print()
+        console.print("[bold]Step-by-step instructions:[/]")
+        console.print(f"  1. Go to: [cyan]https://sepolia.basescan.org/address/{lock_tx['to']}[/]")
+        console.print("  2. Click [bold]'Contract'[/] tab")
+        console.print("  3. Click [bold]'Write Contract'[/] tab")
+        console.print("  4. Find and click [bold]'lock'[/] function")
+        console.print("  5. Fill in the fields with the encoded signature below")
+        console.print()
+        console.print("[bold]Function: lock[/]")
+        console.print("[bold]Signature (encoded transaction data):[/]")
+        # The 'data' field contains the encoded function call with the EIP-712 signature
+        # Show it as "Signature" to avoid confusion with transaction data
+        if 'data' in lock_tx:
+            console.print(f"   {lock_tx['data']}")
+        else:
+            # Fallback if structure is different
+            console.print(f"   {lock_tx.get('data', 'N/A')}")
+        console.print()
+        console.print("  6. Click [bold]'Write'[/] and confirm in MetaMask")
+        console.print()
+        console.print("[dim]Alternative: Use MetaMask directly with this transaction:[/]")
         console.print(f"   To: {lock_tx['to']}")
         console.print(f"   Data: {lock_tx['data']}")
         console.print()
