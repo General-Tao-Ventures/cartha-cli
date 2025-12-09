@@ -1,10 +1,10 @@
 # Cartha CLI
 
-**The official command-line tool for Cartha subnet miners.** A simple, powerful way to manage your mining operations—from registration to tracking your locked funds.
+**The official command-line tool for Cartha subnet miners.** Cartha is the Liquidity Provider for 0xMarkets DEX. A simple, powerful way to manage your mining operations—from registration to tracking your locked funds.
 
 ## Why Cartha CLI?
 
-Cartha CLI makes mining on the Cartha subnet effortless:
+Cartha CLI makes mining on the Cartha subnet effortless. As the Liquidity Provider for 0xMarkets DEX, Cartha enables miners to provide liquidity and earn rewards:
 
 - **🔐 One-Click Registration** - Get started mining in minutes
 - **📊 Instant Status Updates** - See all your pools, balances, and expiration dates at a glance

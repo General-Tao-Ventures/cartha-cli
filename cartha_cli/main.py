@@ -18,7 +18,7 @@ from .commands.common import log_endpoint_banner, set_trace_enabled
 from .commands.help import print_root_help
 
 app = typer.Typer(
-    help="Miner-facing tooling for registering on the Cartha subnet and managing lock positions.",
+    help="Miner-facing tooling for registering on the Cartha subnet and managing lock positions. Cartha is the Liquidity Provider for 0xMarkets DEX.",
     add_completion=False,
 )
 
