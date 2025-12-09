@@ -203,6 +203,10 @@ def miner_status(
     # Display clock and countdown
     display_clock_and_countdown()
 
+    # Display info about Cartha being the Liquidity Provider for 0xMarkets DEX
+    console.print("[dim]Cartha is the Liquidity Provider for 0xMarkets DEX[/]")
+    console.print()
+
     table = Table(title="Miner Status", show_header=False)
     table.add_row("Hotkey", hotkey)
     table.add_row("Slot UID", slot_id)

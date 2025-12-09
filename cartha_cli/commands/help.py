@@ -14,6 +14,7 @@ def print_root_help() -> None:
     console.print(Rule("[bold cyan]Cartha CLI[/]"))
     console.print(
         "Miner-facing command line tool for Cartha subnet miners.\n"
+        "Cartha is the Liquidity Provider for 0xMarkets DEX.\n"
         "Register on the subnet, manage lock positions, and track your mining status."
     )
     console.print()

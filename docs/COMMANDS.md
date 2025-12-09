@@ -2,6 +2,8 @@
 
 Complete documentation for all Cartha CLI commands and their arguments.
 
+**Cartha is the Liquidity Provider for 0xMarkets DEX.** This CLI enables miners to provide liquidity and manage their mining operations on the Cartha subnet.
+
 ## Table of Contents
 
 - [Command Groups](#command-groups)
@@ -94,7 +96,7 @@ cartha m register --wallet-name cold --wallet-hotkey hot
 
 ### cartha miner status
 
-Check your miner status and pool information **without requiring authentication**. This is the fastest way to check your miner's status, active pools, expiration dates, and password issuance status.
+Check your miner status and pool information **without requiring authentication**. This is the fastest way to check your miner's status, active pools, expiration dates, and password issuance status. As a Liquidity Provider for 0xMarkets DEX, this shows your liquidity positions and mining status.
 
 #### Usage
 
