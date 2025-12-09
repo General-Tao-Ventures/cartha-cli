@@ -587,7 +587,7 @@ def prove_lock(
         console.print("  3. Click [bold]'Write as Proxy'[/] tab")
         console.print("  4. Click [bold]'Connect to Web3'[/] button and connect your EVM wallet")
         console.print(f"     (Use the same wallet address as the owner: [cyan]{owner}[/])")
-        console.print("  5. Find and click [bold]'lock'[/] function")
+        console.print("  5. Find and click [bold]'8. lock'[/] function")
         console.print("  6. Fill in the fields:")
         console.print()
         console.print("[bold]Function: lock[/]")
