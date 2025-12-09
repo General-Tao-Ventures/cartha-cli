@@ -653,7 +653,7 @@ def prove_lock(
                 )
 
             console.print()  # Empty line before polling
-            max_polls = 30
+            max_polls = 10
             poll_interval = 5  # seconds
 
             with Status(
@@ -678,19 +678,39 @@ def prove_lock(
                             )
                             break
                         else:
-                            if poll_num < max_polls - 1:
-                                status.update(
-                                    f"[bold cyan]Waiting for verification... (attempt {poll_num + 1}/{max_polls})[/]"
-                                )
-                                time.sleep(poll_interval)
+                            # Check if event was found on-chain but not yet processed
+                            message = status_result.get("message", "")
+                            if "found on-chain but not yet processed" in message.lower():
+                                if poll_num < max_polls - 1:
+                                    status.update(
+                                        f"[bold cyan]Lock detected on-chain, waiting for verifier to process... (attempt {poll_num + 1}/{max_polls})[/]"
+                                    )
+                                    time.sleep(poll_interval)
+                                else:
+                                    status.stop()
+                                    console.print(
+                                        "\n[yellow]Lock detected on-chain but not yet processed by verifier.[/]"
+                                    )
+                                    console.print(
+                                        "[dim]The verifier polls every 30 seconds and will process it automatically.[/]"
+                                    )
+                                    console.print(
+                                        f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+                                    )
                             else:
-                                status.stop()
-                                console.print(
-                                    "\n[yellow]Lock not yet verified. The verifier will process it automatically.[/]"
-                                )
-                                console.print(
-                                    f"[dim]Message: {status_result.get('message', 'N/A')}[/]"
-                                )
+                                if poll_num < max_polls - 1:
+                                    status.update(
+                                        f"[bold cyan]Waiting for verification... (attempt {poll_num + 1}/{max_polls})[/]"
+                                    )
+                                    time.sleep(poll_interval)
+                                else:
+                                    status.stop()
+                                    console.print(
+                                        "\n[yellow]Lock not yet verified. The verifier will process it automatically.[/]"
+                                    )
+                                    console.print(
+                                        f"[dim]Message: {message or 'N/A'}[/]"
+                                    )
                     except VerifierError as exc:
                         if poll_num < max_polls - 1:
                             # Truncate long error messages to keep single line clean
