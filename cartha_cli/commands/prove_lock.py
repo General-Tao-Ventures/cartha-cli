@@ -689,14 +689,36 @@ def prove_lock(
                                     )
                                     process_result = process_lock_transaction(tx_hash=tx_hash_normalized)
                                     if process_result.get("success"):
-                                        # Processing succeeded, check status again
+                                        # Processing succeeded, verify status with a brief retry
                                         status.update(
-                                            f"[bold cyan]Processing triggered, verifying... (attempt {poll_num + 1}/{max_polls})[/]"
+                                            f"[bold cyan]Processing succeeded, verifying status... (attempt {poll_num + 1}/{max_polls})[/]"
                                         )
-                                        time.sleep(1)  # Brief delay for database commit
-                                        status_result = get_lock_status(tx_hash=tx_hash_normalized)
-                                        if status_result.get("verified"):
-                                            status.stop()
+                                        # Give database a moment to commit, then check status
+                                        time.sleep(1.5)  # Slightly longer delay for database commit
+                                        
+                                        # Try checking status up to 3 times with short delays
+                                        verified = False
+                                        status_result = None
+                                        for retry in range(3):
+                                            try:
+                                                status_result = get_lock_status(tx_hash=tx_hash_normalized)
+                                                if status_result.get("verified"):
+                                                    verified = True
+                                                    break
+                                                elif retry < 2:
+                                                    # Brief delay before retry
+                                                    time.sleep(0.5)
+                                            except Exception:
+                                                # If status check fails, continue retrying
+                                                if retry < 2:
+                                                    time.sleep(0.5)
+                                                continue
+                                        
+                                        # Stop polling - processing succeeded
+                                        status.stop()
+                                        
+                                        if verified and status_result:
+                                            # Status check confirmed verification
                                             console.print("\n[bold green]✓ Lock verified![/]")
                                             console.print(
                                                 f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
@@ -704,7 +726,26 @@ def prove_lock(
                                             console.print(
                                                 f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
                                             )
-                                            break
+                                        else:
+                                            # Processing succeeded but status check didn't confirm yet (timing issue)
+                                            console.print("\n[bold green]✓ Lock processing completed![/]")
+                                            console.print(
+                                                f"[bold cyan]Action:[/] {process_result.get('action', 'processed')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Hotkey:[/] {process_result.get('hotkey', 'N/A')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Slot:[/] {process_result.get('slot', 'N/A')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Epoch:[/] {process_result.get('epoch_version', 'N/A')}"
+                                            )
+                                            console.print(
+                                                "\n[dim]Status check may take a moment to reflect. "
+                                                "You can verify with: [bold]cartha miner status[/][/]"
+                                            )
+                                        break
                                     else:
                                         # Processing didn't succeed (e.g., couldn't match to miner)
                                         if poll_num < max_polls - 1:
