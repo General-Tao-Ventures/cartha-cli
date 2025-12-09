@@ -28,38 +28,16 @@ def print_root_help() -> None:
     commands = Table(title="Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False)
     commands.add_row("[green]help[/]", "Show this help message.")
     commands.add_row("[green]version[/]", "Show CLI version.")
-    commands.add_row("[green]health[/]", "Check CLI health and connectivity.")
     commands.add_row(
         "[green]miner[/] [dim](or [green]m[/])[/]", "Miner management commands."
     )
     commands.add_row(
         "[green]vault[/] [dim](or [green]v[/])[/]", "Vault management commands."
     )
+    commands.add_row(
+        "[green]utils[/] [dim](or [green]u[/])[/]", "Utility commands: health checks and configuration."
+    )
     console.print(commands)
-    console.print()
-
-    # Show miner subcommands
-    miner_commands = Table(
-        title="Miner Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
-    )
-    miner_commands.add_row(
-        "[green]miner status[/]",
-        "Show miner status and pool information (no password).",
-    )
-    miner_commands.add_row(
-        "[green]miner register[/]", "Register a hotkey on the subnet."
-    )
-    console.print(miner_commands)
-    console.print()
-
-    # Show vault subcommands
-    vault_commands = Table(
-        title="Vault Commands", box=box.SQUARE_DOUBLE_HEAD, show_header=False
-    )
-    vault_commands.add_row(
-        "[green]vault lock[/]", "Create a new lock position with verifier-signed LockRequest."
-    )
-    console.print(vault_commands)
     console.print()
 
     # Display clock and countdown in a separate table

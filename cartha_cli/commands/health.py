@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Any
 
@@ -10,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from ..config import settings
+from ..config import Settings, settings
 from ..verifier import VerifierError, _build_url, _request
 from .common import console
 
@@ -177,6 +178,130 @@ def health_check(
         "status": "pass" if not config_issues else "warning",
         "details": config_status,
         "issues": config_issues if config_issues else None,
+    })
+    
+    # Check 4: Subnet metadata
+    console.print()
+    console.print(f"[bold]Checking subnet metadata...[/]")
+    console.print(f"[dim]NetUID: {settings.netuid}[/]")
+    
+    subnet_ok = False
+    subnet_status = "Unknown"
+    subnet_latency_ms = None
+    subnet_info: dict[str, Any] = {}
+    
+    try:
+        start_time = time.time()
+        subtensor = bt.subtensor(network=settings.network)
+        metagraph = subtensor.metagraph(netuid=settings.netuid)
+        metagraph.sync(subtensor=subtensor)
+        latency_ms = int((time.time() - start_time) * 1000)
+        subnet_latency_ms = latency_ms
+        
+        # Get subnet metadata
+        total_miners = len(metagraph.neurons) if hasattr(metagraph, "neurons") else 0
+        tempo = getattr(metagraph, "tempo", None)
+        block = getattr(metagraph, "block", None)
+        
+        # Convert block to int if it's an array
+        if hasattr(block, "__iter__") and not isinstance(block, (str, int)):
+            try:
+                block = int(block[0]) if len(block) > 0 else None
+            except (ValueError, TypeError, IndexError):
+                block = None
+        
+        subnet_info = {
+            "total_slots": total_miners,
+            "tempo": tempo,
+            "block": block,
+        }
+        
+        subnet_status_parts = []
+        if total_miners > 0:
+            subnet_status_parts.append(f"{total_miners} registered slots")
+        if tempo is not None:
+            subnet_status_parts.append(f"tempo: {tempo}")
+        if block is not None:
+            subnet_status_parts.append(f"block: {block}")
+        
+        subnet_status = ", ".join(subnet_status_parts) if subnet_status_parts else "Connected"
+        subnet_ok = True
+        
+        console.print(f"[bold green]✓ Subnet metadata retrieved[/] ({latency_ms}ms)")
+        if verbose:
+            console.print(f"  • Registered slots: {total_miners}")
+            if tempo is not None:
+                console.print(f"  • Tempo: {tempo}")
+            if block is not None:
+                console.print(f"  • Block: {block}")
+        checks_passed += 1
+    except Exception as exc:
+        subnet_status = f"Error: {exc}"
+        console.print(f"[bold red]✗ Subnet metadata check failed[/]: {exc}")
+        checks_failed += 1
+    
+    results.append({
+        "name": "Subnet Metadata",
+        "status": "pass" if subnet_ok else "fail",
+        "details": subnet_status,
+        "latency_ms": subnet_latency_ms,
+        "info": subnet_info if subnet_ok else None,
+    })
+    
+    # Check 5: Environment Variables
+    console.print()
+    console.print(f"[bold]Checking Environment Variables...[/]")
+    
+    env_vars_ok = True
+    env_status = "OK"
+    env_details: dict[str, dict[str, Any]] = {}
+    
+    # Get default values from Settings model
+    default_settings = Settings()
+    
+    # Check each configurable env var
+    env_var_mapping = {
+        "CARTHA_VERIFIER_URL": ("verifier_url", default_settings.verifier_url),
+        "CARTHA_NETWORK": ("network", default_settings.network),
+        "CARTHA_NETUID": ("netuid", str(default_settings.netuid)),
+        "CARTHA_EVM_PK": ("evm_private_key", None),  # Sensitive, don't show value
+        "CARTHA_RETRY_MAX_ATTEMPTS": ("retry_max_attempts", str(default_settings.retry_max_attempts)),
+        "CARTHA_RETRY_BACKOFF_FACTOR": ("retry_backoff_factor", str(default_settings.retry_backoff_factor)),
+    }
+    
+    for env_var, (setting_key, default_value) in env_var_mapping.items():
+        env_value = os.getenv(env_var)
+        is_set = env_value is not None
+        
+        # For sensitive values, don't show the actual value
+        display_value = "[REDACTED]" if env_var == "CARTHA_EVM_PK" and is_set else env_value
+        
+        env_details[env_var] = {
+            "is_set": is_set,
+            "value": display_value,
+            "default": default_value,
+            "source": "environment" if is_set else "default",
+        }
+    
+    # Count how many are set vs defaults
+    set_count = sum(1 for details in env_details.values() if details["is_set"])
+    total_count = len(env_details)
+    
+    env_status = f"{set_count}/{total_count} Environment Variables set"
+    
+    console.print(f"[bold green]✓ Environment Variables checked[/] ({set_count}/{total_count} set)")
+    if verbose:
+        for env_var, details in env_details.items():
+            source_indicator = "[green]●[/]" if details["is_set"] else "[dim]○[/]"
+            console.print(f"  {source_indicator} {env_var}: {details['value'] or details['default']} ({details['source']})")
+    
+    checks_passed += 1
+    
+    results.append({
+        "name": "Environment Variables",
+        "status": "pass",
+        "details": env_status,
+        "info": env_details if verbose else None,
     })
     
     # Summary

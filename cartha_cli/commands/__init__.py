@@ -1,6 +1,7 @@
 """CLI command modules."""
 
 from . import (
+    config,
     health,
     miner_password,
     miner_status,
@@ -11,6 +12,7 @@ from . import (
 )
 
 __all__ = [
+    "config",
     "health",
     "miner_password",
     "miner_status",
