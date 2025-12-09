@@ -9,6 +9,7 @@ Complete documentation for all Cartha CLI commands and their arguments.
   - [cartha miner register](#cartha-miner-register)
   - [cartha miner status](#cartha-miner-status)
 - [Vault Commands](#vault-commands)
+  - [cartha vault pools](#cartha-vault-pools)
   - [cartha vault lock](#cartha-vault-lock)
   - [cartha vault claim](#cartha-vault-claim)
 - [Utility Commands](#utility-commands)
@@ -186,6 +187,74 @@ The command displays:
 ---
 
 ## Vault Commands
+
+### cartha vault pools
+
+Show current available pools with their pool IDs, vault addresses, and chain IDs.
+
+#### Usage
+
+```bash
+cartha vault pools [OPTIONS]
+# or
+cartha v pools [OPTIONS]
+```
+
+#### Options
+
+| Option | Type | Description |
+| --- | --- | --- |
+| `--json` | flag | Emit responses as JSON |
+
+#### Examples
+
+```bash
+# List all available pools
+cartha vault pools
+# or
+cartha v pools
+
+# JSON output format
+cartha vault pools --json
+```
+
+#### Output
+
+The command displays all available pools in a multi-line format:
+
+- **Pool Name**: Human-readable pool identifier (e.g., "BTCUSD", "ETHUSD")
+- **Pool ID**: Full hex pool ID (66 characters: `0x` + 64 hex characters)
+- **Vault Address**: Full vault contract address (42 characters: `0x` + 40 hex characters)
+- **Chain ID**: EVM chain ID where the vault is deployed
+
+#### Example Output
+
+```
+Available Pools
+
+Pool 1: BTCUSD
+  Pool ID:      0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489
+  Vault Address: 0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69
+  Chain ID:     84532
+
+Pool 2: ETHUSD
+  Pool ID:      0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45
+  Vault Address: 0xdB74B44957A71c95406C316f8d3c5571FA588248
+  Chain ID:     84532
+
+Pool 3: EURUSD
+  Pool ID:      0xa9226449042e36bf6865099eec57482aa55e3ad026c315a0e4a692b776c318ca
+  Vault Address: 0x3C4dAfAC827140B8a031d994b7e06A25B9f27BAD
+  Chain ID:     84532
+```
+
+#### When to Use
+
+- Before creating a lock position to see available pools
+- To verify pool IDs and vault addresses for a specific pool
+- To check which chain a pool is deployed on
+
+---
 
 ### cartha vault lock
 

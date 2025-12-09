@@ -64,6 +64,17 @@ See all your active trading pairs, balances, and when they expire—all in one c
 - Days remaining before expiration (with helpful warnings)
 - Which pools are included in the next reward epoch
 
+### View Available Pools
+
+See all available pools with their pool IDs and vault addresses:
+
+```bash
+cartha vault pools
+# Or use: cartha v pools
+```
+
+This shows you which pools are available, their full pool IDs, vault contract addresses, and chain IDs.
+
 ### Lock Your Funds
 
 Create a new lock position with the streamlined lock flow:
