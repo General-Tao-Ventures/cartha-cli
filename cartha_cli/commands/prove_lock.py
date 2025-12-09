@@ -473,7 +473,7 @@ def prove_lock(
             console.print("[bold yellow]Cancelled.[/]")
             raise typer.Exit(code=0)
 
-        # Step 8: Display transaction data
+        # Step 8: Display transaction data - Phase 1: Approve
         console.print(f"\n[bold cyan]Transaction Data[/]")
         console.print(
             "\n[bold yellow]⚠️  Execute these transactions to complete your lock:[/]\n"
@@ -483,33 +483,42 @@ def prove_lock(
         usdc_contract_address = "0x2340D09c348930A76c8c2783EDa8610F699A51A8"
         
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        console.print("[bold]1. Approve USDC (via BaseScan)[/]")
+        console.print("[bold]Phase 1: Approve USDC (via BaseScan)[/]")
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
         console.print()
         console.print("[bold]Step-by-step instructions:[/]")
         console.print("  1. Go to: [cyan]https://sepolia.basescan.org/address/0x2340D09c348930A76c8c2783EDa8610F699A51A8[/]")
         console.print("  2. Click [bold]'Contract'[/] tab")
         console.print("  3. Click [bold]'Write Contract'[/] tab")
-        console.print("  4. Find and click [bold]'1. approve'[/] function")
-        console.print("  5. Fill in the fields:")
-        console.print()
-        console.print("[bold]Contract Address (USDC):[/]")
-        console.print(f"   {usdc_contract_address}")
+        console.print("  4. Click [bold]'Connect to Web3'[/] button and connect your EVM wallet")
+        console.print(f"     (Use the same wallet address as the owner: [cyan]{owner}[/])")
+        console.print("  5. Find and click [bold]'1. approve'[/] function")
+        console.print("  6. Fill in the fields:")
         console.print()
         console.print("[bold]Function: approve[/]")
         console.print("[bold]Parameters:[/]")
         console.print(f"   [yellow]spender[/] (address): {vault}")
         console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
         console.print()
-        console.print("  6. Click [bold]'Write'[/] and confirm in MetaMask")
+        console.print("  7. Click [bold]'Write'[/] and confirm in MetaMask")
         console.print()
         console.print("[dim]Alternative: Use MetaMask directly with this transaction data:[/]")
         console.print(f"   To: {approve_tx['to']}")
         console.print(f"   Data: {approve_tx['data']}")
         console.print()
 
+        # Wait for user confirmation before showing Phase 2
+        if not Confirm.ask(
+            "\n[bold yellow]Have you completed the approve transaction?[/] (Type 'yes' to continue to Phase 2)",
+            default=False
+        ):
+            console.print("[bold yellow]You can continue with Phase 2 later. The signature will expire in 5 minutes.[/]")
+            raise typer.Exit(code=0)
+
+        # Step 9: Display Phase 2: Lock Position
+        console.print()
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        console.print("[bold]2. Lock Position (via BaseScan)[/]")
+        console.print("[bold]Phase 2: Lock Position (via BaseScan)[/]")
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
         console.print()
         # Verify vault address matches what we expect
@@ -524,21 +533,38 @@ def prove_lock(
         console.print("[bold]Step-by-step instructions:[/]")
         console.print(f"  1. Go to: [cyan]https://sepolia.basescan.org/address/{lock_tx['to']}[/]")
         console.print("  2. Click [bold]'Contract'[/] tab")
-        console.print("  3. Click [bold]'Write Contract'[/] tab")
-        console.print("  4. Find and click [bold]'lock'[/] function")
-        console.print("  5. Fill in the fields with the encoded signature below")
+        console.print("  3. Click [bold]'Write as Proxy'[/] tab")
+        console.print("  4. Click [bold]'Connect to Web3'[/] button and connect your EVM wallet")
+        console.print(f"     (Use the same wallet address as the owner: [cyan]{owner}[/])")
+        console.print("  5. Find and click [bold]'lock'[/] function")
+        console.print("  6. Fill in the fields:")
         console.print()
         console.print("[bold]Function: lock[/]")
-        console.print("[bold]Signature (encoded transaction data):[/]")
-        # The 'data' field contains the encoded function call with the EIP-712 signature
-        # Show it as "Signature" to avoid confusion with transaction data
-        if 'data' in lock_tx:
-            console.print(f"   {lock_tx['data']}")
-        else:
-            # Fallback if structure is different
-            console.print(f"   {lock_tx.get('data', 'N/A')}")
+        console.print("[bold]Parameters:[/]")
+        
+        # Calculate hotkey bytes32 (keccak256 of SS58 string)
+        hotkey_bytes = hotkey_ss58.encode("utf-8")
+        hotkey_bytes32 = Web3.keccak(hotkey_bytes)
+        hotkey_hex = "0x" + hotkey_bytes32.hex()
+        
+        # Convert pool_id to bytes32 hex if needed
+        pool_id_normalized = pool_id.lower().strip()
+        if not pool_id_normalized.startswith("0x"):
+            pool_id_normalized = "0x" + pool_id_normalized
+        if len(pool_id_normalized) == 42:
+            # Legacy address format: pad to bytes32
+            hex_part = pool_id_normalized[2:]
+            padded_hex = "0" * 24 + hex_part
+            pool_id_normalized = "0x" + padded_hex
+        
+        console.print(f"   [yellow]poolId_[/] (bytes32): {pool_id_normalized}")
+        console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
+        console.print(f"   [yellow]lockDays[/] (uint64): {lock_days}")
+        console.print(f"   [yellow]hotkey[/] (bytes32): {hotkey_hex}")
+        console.print(f"   [yellow]timestamp[/] (uint256): {timestamp}")
+        console.print(f"   [yellow]signature[/] (bytes): {signature}")
         console.print()
-        console.print("  6. Click [bold]'Write'[/] and confirm in MetaMask")
+        console.print("  7. Click [bold]'Write'[/] and confirm in MetaMask")
         console.print()
         console.print("[dim]Alternative: Use MetaMask directly with this transaction:[/]")
         console.print(f"   To: {lock_tx['to']}")
