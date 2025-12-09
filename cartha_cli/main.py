@@ -6,7 +6,6 @@ import typer
 
 from .commands import (
     health,
-    miner_password,
     miner_status,
     pair_status,
     prove_lock,
@@ -88,7 +87,6 @@ vault_app_alias.callback(invoke_without_command=True)(vault_group_callback)
 # Register commands in both miner apps (main and alias)
 for miner_group in [miner_app, miner_app_alias]:
     miner_group.command("status")(miner_status.miner_status)
-    miner_group.command("password")(miner_password.miner_password)
     miner_group.command("register")(register.register)
 
 # Register commands in both vault apps (main and alias)

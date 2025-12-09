@@ -47,9 +47,6 @@ def print_root_help() -> None:
         "Show miner status and pool information (no password).",
     )
     miner_commands.add_row(
-        "[green]miner password[/]", "Show miner password (requires authentication)."
-    )
-    miner_commands.add_row(
         "[green]miner register[/]", "Register a hotkey on the subnet."
     )
     console.print(miner_commands)
