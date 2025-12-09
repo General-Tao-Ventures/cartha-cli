@@ -368,8 +368,5 @@ def miner_status(
             console.print(
                 "• Multiple pools: Each pool is tracked separately. Expired pools stop earning, others continue."
             )
-        console.print(
-            "• Use [bold]cartha miner password[/] to view your password when needed."
-        )
 
     return

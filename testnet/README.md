@@ -11,6 +11,84 @@ This guide will help you set up and use the Cartha CLI on the public testnet wit
 - Testnet TAO (required for subnet registration)
 - EVM wallet (MetaMask or similar) with testnet USDC for locking
 
+## Step 0: Set Up Your EVM Wallet for Base Sepolia Testnet
+
+Before you can lock funds, you need to configure your EVM wallet (MetaMask, Coinbase Wallet, etc.) to connect to Base Sepolia Testnet and get testnet tokens.
+
+### 0.1: Add Base Sepolia Testnet to Your Wallet
+
+**For MetaMask:**
+
+1. Open MetaMask and click the network dropdown (usually shows "Ethereum Mainnet")
+2. Click "Add Network" or "Add a network manually"
+3. Enter the following network details:
+
+   ```
+   Network Name: Base Sepolia
+   RPC URL: https://sepolia.base.org
+   Chain ID: 84532
+   Currency Symbol: ETH
+   Block Explorer URL: https://sepolia.basescan.org
+   ```
+
+4. Click "Save" to add the network
+5. Switch to the "Base Sepolia" network
+
+**For Other Wallets:**
+
+- **Coinbase Wallet**: Go to Settings → Networks → Add Network, then enter the details above
+- **WalletConnect-compatible wallets**: Use the same network details when connecting
+
+**Quick Add (MetaMask):**
+
+You can also use the [Chainlist](https://chainlist.org/) website:
+1. Visit https://chainlist.org/
+2. Search for "Base Sepolia"
+3. Click "Connect Wallet" and approve the connection
+4. Click "Add to MetaMask" and confirm
+
+### 0.2: Get Testnet ETH for Gas Fees
+
+You'll need testnet ETH on Base Sepolia to pay for transaction gas fees. Get it from the official Optimism Superchain faucet:
+
+1. **Visit the Optimism Superchain Faucet**: https://console.optimism.io/faucet
+2. **Connect your wallet** (MetaMask or WalletConnect)
+3. **Select "Base Sepolia"** from the network dropdown
+4. **Enter your wallet address** (or it will auto-detect from your connected wallet)
+5. **Click "Request Tokens"** or similar button
+6. **Wait for confirmation** - You should receive testnet ETH within a few minutes
+
+**Note**: The faucet may have rate limits (e.g., once per 24 hours per address). If you need more testnet ETH, you may need to wait or use a different address.
+
+**Alternative Faucets** (if the main faucet is unavailable):
+- Check Base Sepolia documentation for additional faucet options
+- Join the Cartha Discord/Telegram for community faucet links
+
+### 0.3: Get Testnet USDC Tokens
+
+Testnet USDC is required to lock funds in the Cartha vaults. Currently, testnet USDC is distributed manually.
+
+**To Get Testnet USDC:**
+
+1. **Contact the Cartha Team**:
+   - Join our Discord/Telegram (link in main README)
+   - Send a message requesting testnet USDC
+   - Provide your Base Sepolia wallet address
+   - Mention you're setting up for Cartha testnet mining
+
+2. **What You'll Receive**:
+   - Testnet USDC tokens on Base Sepolia
+   - Enough to test the lock functionality (amounts vary)
+
+**Future**: We're developing an automated faucet for testnet USDC. Once available, this section will be updated with instructions.
+
+**Testnet USDC Contract Address** (for reference):
+- Base Sepolia: `0x2340D09c348930A76c8c2783EDa8610F699A51A8`
+
+You can verify you received USDC by:
+- Checking your wallet balance (should show USDC)
+- Viewing your address on [BaseScan Sepolia](https://sepolia.basescan.org/)
+
 ### Getting Testnet TAO
 
 You'll need testnet TAO to register your hotkey to the subnet. Get testnet TAO from the faucet:
@@ -97,7 +175,20 @@ curl "${CARTHA_VERIFIER_URL}/health"
 
 ## Testnet Workflow
 
-### Step 1: Register Your Hotkey
+### Step 1: Verify Your EVM Wallet Setup
+
+Before proceeding, make sure you have:
+
+- ✅ Base Sepolia network added to your wallet
+- ✅ Testnet ETH in your wallet (for gas fees)
+- ✅ Testnet USDC in your wallet (contact team if needed)
+
+You can verify your balances:
+- Check ETH balance in your wallet
+- Check USDC balance (should show as a token in your wallet)
+- View on [BaseScan Sepolia](https://sepolia.basescan.org/address/YOUR_ADDRESS) to see all tokens
+
+### Step 2: Register Your Hotkey
 
 Register your hotkey to the testnet subnet:
 
@@ -117,7 +208,7 @@ This will:
 
 **Save the output** - you'll need your slot UID.
 
-### Step 2: Lock Funds Using New Flow
+### Step 3: Lock Funds Using New Flow
 
 Use the new interactive lock flow to create a lock position:
 
@@ -128,9 +219,9 @@ uv run cartha vault lock \
   --pool-id BTC/USD \
   --amount 100.0 \
   --lock-days 30 \
-  --owner-evm 0xYourEVMAddress \
-  --chain-id 8453 \
-  --vault-address 0xVaultContractAddress
+  --owner-evm 0xYourEVMAddress
+
+# Note: --chain-id and --vault-address are optional - CLI auto-matches them from pool-id!
 ```
 
 This command will:
@@ -142,9 +233,18 @@ This command will:
 5. **Execute in MetaMask**: You'll execute these transactions in MetaMask (or your EVM wallet)
 6. **Poll Status**: Automatically poll for transaction confirmation and verification
 
-**Note**: You'll need to have USDC in your EVM wallet and approve the vault to spend it. The CLI will display the exact transaction data for you to copy into MetaMask.
+**Important Notes**:
+- Make sure you're connected to **Base Sepolia** network in MetaMask (not Mainnet!)
+- You'll need testnet USDC in your EVM wallet (contact team if you don't have any)
+- The CLI will display the exact transaction data for you to copy into MetaMask
+- You'll need to approve the vault to spend USDC before you can lock funds
 
-### Step 3: Check Miner Status
+**Transaction Flow**:
+1. **Approve USDC**: First transaction approves the vault to spend your USDC
+2. **Lock Position**: Second transaction locks your USDC in the vault
+3. Both transactions require gas fees (paid in testnet ETH)
+
+### Step 4: Check Miner Status
 
 Verify your miner status (no authentication required):
 
@@ -166,13 +266,29 @@ This will show:
 - All active pools with amounts and expiration dates
 - Days remaining countdown (with warnings for expiring pools)
 
-## Pool IDs
+## Pool IDs and Vault Addresses
 
 Pool IDs can be specified as either:
-- **Human-readable names**: `BTC/USD`, `EUR/USD`, `ETH/USDC`, etc.
+- **Human-readable names**: `BTC/USD`, `EUR/USD`, `ETH/USD`, etc.
 - **Hex strings**: `0x...` (32 bytes)
 
-The CLI automatically converts readable names to hex format. See `testnet/pool_ids.py` for available pool mappings.
+The CLI automatically converts readable names to hex format and matches them to the correct vault address.
+
+### Available Testnet Pools (Base Sepolia)
+
+| Pool Name | Pool ID (hex) | Vault Address |
+|-----------|---------------|---------------|
+| BTC/USD | `0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489` | `0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69` |
+| ETH/USD | `0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45` | `0xdB74B44957A71c95406C316f8d3c5571FA588248` |
+| EUR/USD | `0xa9226449042e36bf6865099eec57482aa55e3ad026c315a0e4a692b776c318ca` | `0x3C4dAfAC827140B8a031d994b7e06A25B9f27BAD` |
+
+**Note**: When using `cartha vault lock`, you can simply specify `--pool-id BTC/USD` and the CLI will automatically:
+- Match the correct vault address for that pool
+- Match the correct chain ID (Base Sepolia: 84532)
+
+You don't need to manually specify `--vault-address` or `--chain-id` unless you want to override them.
+
+See `testnet/pool_ids.py` for the complete pool mappings and helper functions.
 
 ## Common Commands
 
@@ -261,33 +377,115 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 
 **Solution**:
 
-- Ensure you have enough USDC in your wallet
-- Check that you've approved the vault to spend USDC
-- Verify the transaction data matches what the CLI displayed
-- Check gas fees and network congestion
+- **Check Network**: Make sure you're on **Base Sepolia** network (not Mainnet or other networks)
+- **Check Gas**: Ensure you have enough testnet ETH for gas fees
+- **Check USDC**: Ensure you have enough testnet USDC in your wallet
+- **Check Approval**: Make sure you've approved the vault to spend USDC (first transaction)
+- **Verify Transaction Data**: Check that the transaction data matches what the CLI displayed
+- **Check Network Congestion**: Base Sepolia may be slower than mainnet - wait a bit and retry
+
+### "Insufficient funds" or "Not enough ETH"
+
+**Problem**: Don't have enough testnet ETH for gas
+
+**Solution**:
+
+- Visit https://console.optimism.io/faucet
+- Select "Base Sepolia" network
+- Request testnet ETH to your wallet address
+- Wait a few minutes for the transaction to complete
+- Retry your transaction
+
+### "USDC balance is zero" or "No USDC found"
+
+**Problem**: Don't have testnet USDC tokens
+
+**Solution**:
+
+- Contact the Cartha team on Discord/Telegram
+- Provide your Base Sepolia wallet address
+- Request testnet USDC for testing
+- Wait for the team to send you testnet USDC
+- Verify receipt on [BaseScan Sepolia](https://sepolia.basescan.org/)
+
+### "Write as Proxy" tab not showing on BaseScan
+
+**Problem**: When trying to lock funds, you can't find the "Write as Proxy" tab on BaseScan
+
+**Solution**:
+
+The Cartha vault contracts are UUPS upgradeable proxy contracts. BaseScan needs to verify the proxy relationship before showing the "Write as Proxy" tab. Follow these steps:
+
+1. **Navigate to the vault contract** on BaseScan:
+   - Go to: `https://sepolia.basescan.org/address/{VAULT_ADDRESS}`
+   - Replace `{VAULT_ADDRESS}` with your vault address (e.g., `0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69` for BTC/USD)
+
+2. **Click the "Contract" tab** (if not already selected)
+
+3. **Click the "Code" sub-tab** (under Contract)
+
+4. **Find "More Options"** on the right side of the page (look for a three-dots menu or "More Options" button)
+
+5. **Click "Is this a proxy?"** from the More Options menu
+
+6. **Click "Verify"** to link the proxy to its implementation contract
+
+7. **Wait for verification** - BaseScan will automatically detect and link the implementation contract (may take a few seconds)
+
+8. **Refresh the page** - After verification completes, you should now see:
+   - "Read as Proxy" tab
+   - "Write as Proxy" tab
+
+9. **Click "Write as Proxy"** tab to access the `lock` function
+
+**Note**: This verification is a one-time process per contract. Once verified, the "Write as Proxy" tab will remain available for that contract address.
+
+**If verification fails**:
+- Make sure you're on the correct network (Base Sepolia)
+- Try refreshing the page
+- Check that the contract address is correct
+- Contact the Cartha team if the issue persists
 
 ## Testing Your Setup
+
+### Complete Testnet Checklist
+
+Before starting, make sure you have:
+
+- [ ] Python 3.11 installed
+- [ ] `uv` package manager installed
+- [ ] Bittensor wallet set up
+- [ ] MetaMask (or other EVM wallet) installed
+- [ ] Base Sepolia network added to MetaMask
+- [ ] Testnet ETH in your wallet (from faucet)
+- [ ] Testnet USDC in your wallet (from team)
+- [ ] Testnet TAO in your Bittensor wallet (for registration)
 
 ### Quick Test
 
 ```bash
-# 1. Register
+# 1. Register your hotkey
 uv run cartha miner register --wallet-name test --wallet-hotkey test --network test --netuid 78
 
 # 2. Check miner status (no authentication needed)
 uv run cartha miner status --wallet-name test --wallet-hotkey test
 
 # 3. Lock funds (interactive flow)
+# Note: Make sure you're on Base Sepolia network in MetaMask!
+# Chain ID and vault address are auto-detected from pool-id - no need to specify!
 uv run cartha vault lock \
   --coldkey test \
   --hotkey test \
   --pool-id BTC/USD \
   --amount 100.0 \
   --lock-days 30 \
-  --owner-evm 0xYourEVMAddress \
-  --chain-id 8453 \
-  --vault-address 0xVaultContractAddress
+  --owner-evm 0xYourEVMAddress
 ```
+
+**Important**: 
+- Chain ID (84532 for Base Sepolia) and vault address are **automatically detected** from the pool ID
+- You only need to specify `--pool-id BTC/USD` (or `ETH/USD`, `EUR/USD`)
+- The CLI will show you the auto-matched values before proceeding
 
 ## Next Steps
 

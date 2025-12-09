@@ -8,13 +8,14 @@ Complete documentation for all Cartha CLI commands and their arguments.
 - [Miner Commands](#miner-commands)
   - [cartha miner register](#cartha-miner-register)
   - [cartha miner status](#cartha-miner-status)
-  - [cartha miner password](#cartha-miner-password)
 - [Vault Commands](#vault-commands)
   - [cartha vault lock](#cartha-vault-lock)
   - [cartha vault claim](#cartha-vault-claim)
+- [Utility Commands](#utility-commands)
+  - [cartha utils health](#cartha-utils-health)
+  - [cartha utils config](#cartha-utils-config)
 - [Other Commands](#other-commands)
   - [cartha version](#cartha-version)
-  - [cartha health](#cartha-health)
   - [cartha pair status](#cartha-pair-status-legacy)
 - [Environment Variables](#environment-variables)
 - [Common Workflows](#common-workflows)
@@ -27,6 +28,7 @@ The CLI is organized into logical command groups with short aliases:
 
 - **`cartha miner`** (or **`cartha m`**) - Miner management commands
 - **`cartha vault`** (or **`cartha v`**) - Vault management commands
+- **`cartha utils`** (or **`cartha u`**) - Utility commands (health checks and configuration)
 
 ---
 
@@ -183,72 +185,6 @@ The command displays:
 
 ---
 
-### cartha miner password
-
-View your pair password **with authentication**. This command requires Bittensor signature verification to display the actual password and its issuance date. If no password exists, it will prompt you to create one.
-
-#### Usage
-
-```bash
-cartha miner password [OPTIONS]
-# or
-cartha m password [OPTIONS]
-```
-
-#### Options
-
-| Option | Type | Required | Description |
-| --- | --- | --- | --- |
-| `--wallet-name`, `--wallet.name` | string | Yes | Coldkey wallet name |
-| `--wallet-hotkey`, `--wallet.hotkey` | string | Yes | Hotkey name within the wallet |
-| `--slot` | integer | No | Subnet UID assigned to the miner (auto-fetched if not provided) |
-| `--auto-fetch-uid` | flag | No | Automatically fetch UID from Bittensor network (default: enabled) |
-| `--network` | string | No | Bittensor network name (default: `finney`) |
-| `--netuid` | integer | No | Subnet netuid (default: `35`) |
-| `--json` | flag | No | Emit the raw JSON response |
-
-#### Examples
-
-```bash
-# View password (requires authentication)
-cartha miner password \
-  --wallet-name cold \
-  --wallet-hotkey hot
-
-# Using short alias
-cartha m password --wallet-name cold --wallet-hotkey hot
-
-# With explicit slot UID
-cartha miner password \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --slot 123
-```
-
-#### Output
-
-- Pair password (hex string starting with `0x`)
-- Password issuance timestamp
-- Security reminder to keep password safe
-
-#### When to Use
-
-- When you need to view your password (e.g., for signing lock proofs)
-- When you need to create a password for a newly registered hotkey
-- When you've forgotten your password and need to retrieve it
-
-**Security Note:** Use `cartha miner status` for quick checks. Only use `cartha miner password` when you actually need to view or create your password.
-
-#### What It Does
-
-1. Loads your wallet and validates hotkey ownership
-2. Signs a challenge message with your hotkey to prove ownership
-3. Sends the signed challenge to the verifier
-4. Retrieves and displays the pair password
-5. If no password exists, prompts to create one
-
----
-
 ## Vault Commands
 
 ### cartha vault lock
@@ -373,25 +309,9 @@ If you request a new signature after already requesting one, the old signature b
 
 ---
 
-## Other Commands
+## Utility Commands
 
-### cartha version
-
-Display the CLI version information.
-
-#### Usage
-
-```bash
-cartha version
-```
-
-#### Output
-
-Displays the current version of the Cartha CLI.
-
----
-
-### cartha health
+### cartha utils health
 
 Check CLI health: verifier connectivity, Bittensor network, and configuration.
 
@@ -400,7 +320,9 @@ This command verifies that all components needed for the CLI are working correct
 #### Usage
 
 ```bash
-cartha health [OPTIONS]
+cartha utils health [OPTIONS]
+# or
+cartha u health [OPTIONS]
 ```
 
 #### Options
@@ -413,15 +335,17 @@ cartha health [OPTIONS]
 
 ```bash
 # Basic health check
-cartha health
+cartha utils health
+# or
+cartha u health
 
 # Detailed health check with troubleshooting tips
-cartha health --verbose
+cartha utils health --verbose
 ```
 
 #### Output
 
-The command performs three checks:
+The command performs five checks:
 
 1. **Verifier Connectivity**
    - Tests connection to the configured verifier URL
@@ -439,6 +363,18 @@ The command performs three checks:
    - Checks network is set
    - Validates netuid is positive
    - Reports any configuration issues
+
+4. **Subnet Metadata**
+   - Retrieves subnet information from the metagraph
+   - Shows number of registered slots
+   - Displays tempo (epoch length)
+   - Shows current block number
+   - Measures metadata fetch latency
+
+5. **Environment Variables**
+   - Checks which environment variables are set vs using defaults
+   - Shows count of configured variables
+   - In verbose mode, displays each variable's value and source
 
 #### Exit Codes
 
@@ -555,7 +491,7 @@ Checking configuration...
 
 ### cartha pair status *(Legacy)*
 
-Legacy command for checking pair status. **Deprecated** - use `cartha miner status` instead for faster, unauthenticated status checks, or `cartha miner password` if you need to view the password.
+Legacy command for checking pair status. **Deprecated** - use `cartha miner status` instead for faster, unauthenticated status checks.
 
 #### Usage
 
@@ -587,8 +523,28 @@ The following environment variables can be set to configure the CLI:
 
 ### Setting Environment Variables
 
+The easiest way to manage environment variables is using the `cartha utils config` command:
+
 ```bash
-# Linux/macOS
+# View all available variables and their descriptions
+cartha utils config
+
+# Set a variable (writes to .env file)
+cartha utils config set CARTHA_VERIFIER_URL https://cartha-verifier-826542474079.us-central1.run.app
+cartha utils config set CARTHA_NETWORK finney
+cartha utils config set CARTHA_NETUID 35
+
+# Get information about a specific variable
+cartha utils config get CARTHA_VERIFIER_URL
+
+# Remove a variable
+cartha utils config unset CARTHA_EVM_PK
+```
+
+**Alternative methods:**
+
+```bash
+# Linux/macOS - export in shell
 export CARTHA_VERIFIER_URL="https://cartha-verifier-826542474079.us-central1.run.app"
 export CARTHA_NETWORK="finney"
 export CARTHA_NETUID="35"
@@ -598,8 +554,7 @@ $env:CARTHA_VERIFIER_URL="https://cartha-verifier-826542474079.us-central1.run.a
 $env:CARTHA_NETWORK="finney"
 $env:CARTHA_NETUID="35"
 
-# Using .env file (recommended)
-# Create a .env file in your project root:
+# Manual .env file (create in project root)
 CARTHA_VERIFIER_URL=https://cartha-verifier-826542474079.us-central1.run.app
 CARTHA_NETWORK=finney
 CARTHA_NETUID=35
@@ -648,11 +603,12 @@ export CARTHA_RETRY_BACKOFF_FACTOR=2.0
    ```
    This shows your status without requiring authentication.
 
-3. **View your password when needed:**
+3. **Configure environment variables (optional):**
    ```bash
-   cartha miner password --wallet-name cold --wallet-hotkey hot
+   cartha utils config
+   cartha utils config set CARTHA_NETWORK finney
    ```
-   Use this only when you need to view or create your password.
+   See available configuration options and set them as needed.
 
 ### Creating a Lock Position
 
@@ -747,12 +703,16 @@ Ensure your Bittensor wallet files exist in the default location or set `BITTENS
 export BITTENSOR_WALLET_PATH="/path/to/your/wallets"
 ```
 
-### Pair Password Not Found
+### Configuration Issues
 
-If `miner status` shows "Password issued: no", use `miner password` to create one:
+Use the config command to view and set environment variables:
 
 ```bash
-cartha miner password --wallet-name cold --wallet-hotkey hot
+# View all configuration options
+cartha utils config
+
+# Set a specific variable
+cartha utils config set CARTHA_VERIFIER_URL https://your-verifier-url.com
 ```
 
 ### Signature Generation Fails
@@ -779,16 +739,16 @@ If automatic UID fetching fails:
 
 ## Command Comparison
 
-| Feature | `miner status` | `miner password` | `pair status` (legacy) |
-| --- | --- | --- | --- |
-| Authentication | ❌ Not required | ✅ Required | ✅ Required |
-| Speed | ⚡ Fast | 🐌 Slower | 🐌 Slower |
-| Password Display | ❌ Never | ✅ Yes | ✅ Yes |
-| Pool Information | ✅ Yes | ❌ No | ✅ Yes |
-| Expiration Warnings | ✅ Yes | ❌ No | ✅ Yes |
-| Recommended | ✅ Yes | ✅ When needed | ❌ Deprecated |
+| Feature | `miner status` | `pair status` (legacy) |
+| --- | --- | --- |
+| Authentication | ❌ Not required | ✅ Required |
+| Speed | ⚡ Fast | 🐌 Slower |
+| Password Display | ❌ Never | ✅ Yes |
+| Pool Information | ✅ Yes | ✅ Yes |
+| Expiration Warnings | ✅ Yes | ✅ Yes |
+| Recommended | ✅ Yes | ❌ Deprecated |
 
-**Recommendation:** Use `cartha miner status` for daily checks, and `cartha miner password` only when you need to view or create your password.
+**Recommendation:** Use `cartha miner status` for all status checks. The legacy `pair status` command is deprecated.
 
 ---
 
