@@ -545,7 +545,10 @@ def prove_lock(
         # Calculate hotkey bytes32 (keccak256 of SS58 string)
         hotkey_bytes = hotkey_ss58.encode("utf-8")
         hotkey_bytes32 = Web3.keccak(hotkey_bytes)
-        hotkey_hex = "0x" + hotkey_bytes32.hex()
+        # Ensure single 0x prefix (hex() doesn't include 0x)
+        hotkey_hex = hotkey_bytes32.hex()
+        if not hotkey_hex.startswith("0x"):
+            hotkey_hex = "0x" + hotkey_hex
         
         # Convert pool_id to bytes32 hex if needed
         pool_id_normalized = pool_id.lower().strip()
@@ -557,12 +560,20 @@ def prove_lock(
             padded_hex = "0" * 24 + hex_part
             pool_id_normalized = "0x" + padded_hex
         
+        # Ensure signature has single 0x prefix
+        signature_normalized = signature.strip()
+        if signature_normalized.startswith("0x0x"):
+            # Remove double 0x prefix
+            signature_normalized = signature_normalized[2:]
+        elif not signature_normalized.startswith("0x"):
+            signature_normalized = "0x" + signature_normalized
+        
         console.print(f"   [yellow]poolId_[/] (bytes32): {pool_id_normalized}")
         console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
         console.print(f"   [yellow]lockDays[/] (uint64): {lock_days}")
         console.print(f"   [yellow]hotkey[/] (bytes32): {hotkey_hex}")
         console.print(f"   [yellow]timestamp[/] (uint256): {timestamp}")
-        console.print(f"   [yellow]signature[/] (bytes): {signature}")
+        console.print(f"   [yellow]signature[/] (bytes): {signature_normalized}")
         console.print()
         console.print("  7. Click [bold]'Write'[/] and confirm in MetaMask")
         console.print()
