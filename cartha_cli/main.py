@@ -9,6 +9,7 @@ from .commands import (
     health,
     miner_status,
     pair_status,
+    pools,
     prove_lock,
     register,
     version,
@@ -93,6 +94,7 @@ for miner_group in [miner_app, miner_app_alias]:
 # Register commands in both vault apps (main and alias)
 for vault_group in [vault_app, vault_app_alias]:
     vault_group.command("lock")(prove_lock.prove_lock)
+    vault_group.command("pools")(pools.pools)
 
 # Add groups with short aliases (after callbacks and commands are registered)
 app.add_typer(miner_app, name="miner")
