@@ -34,6 +34,21 @@ POOL_ID_TO_VAULT: dict[str, str] = {
     POOL_MAPPINGS["EURUSD"].lower(): VAULT_ADDRESSES["EURUSD"],
 }
 
+# Vault Address to Chain ID mapping (Base Sepolia testnet)
+# All testnet vaults are on Base Sepolia (chain ID 84532)
+VAULT_TO_CHAIN_ID: dict[str, int] = {
+    VAULT_ADDRESSES["BTCUSD"].lower(): 84532,  # Base Sepolia
+    VAULT_ADDRESSES["ETHUSD"].lower(): 84532,  # Base Sepolia
+    VAULT_ADDRESSES["EURUSD"].lower(): 84532,  # Base Sepolia
+}
+
+# Pool ID (hex) to Chain ID mapping
+POOL_ID_TO_CHAIN_ID: dict[str, int] = {
+    POOL_MAPPINGS["BTCUSD"].lower(): 84532,  # Base Sepolia
+    POOL_MAPPINGS["ETHUSD"].lower(): 84532,  # Base Sepolia
+    POOL_MAPPINGS["EURUSD"].lower(): 84532,  # Base Sepolia
+}
+
 
 def pool_id_to_vault_address(pool_id: str) -> str | None:
     """Get vault address for a given pool ID.
@@ -69,6 +84,38 @@ def vault_address_to_pool_id(vault_address: str) -> str | None:
         if vault.lower() == vault_lower:
             return pool_id
     return None
+
+
+def pool_id_to_chain_id(pool_id: str) -> int | None:
+    """Get chain ID for a given pool ID.
+    
+    Args:
+        pool_id: Pool ID in hex format (bytes32)
+        
+    Returns:
+        Chain ID if found, None otherwise
+    """
+    pool_id_lower = pool_id.lower().strip()
+    if not pool_id_lower.startswith("0x"):
+        pool_id_lower = "0x" + pool_id_lower
+    
+    return POOL_ID_TO_CHAIN_ID.get(pool_id_lower)
+
+
+def vault_address_to_chain_id(vault_address: str) -> int | None:
+    """Get chain ID for a given vault address.
+    
+    Args:
+        vault_address: Vault contract address
+        
+    Returns:
+        Chain ID if found, None otherwise
+    """
+    vault_lower = vault_address.lower().strip()
+    if not vault_lower.startswith("0x"):
+        vault_lower = "0x" + vault_lower
+    
+    return VAULT_TO_CHAIN_ID.get(vault_lower)
 
 
 def pool_name_to_id(pool_name: str) -> str:

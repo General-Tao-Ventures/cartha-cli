@@ -31,9 +31,11 @@ try:
     from ...testnet.pool_ids import (
         format_pool_id,
         list_pools,
+        pool_id_to_chain_id,
         pool_id_to_name,
         pool_id_to_vault_address,
         pool_name_to_id,
+        vault_address_to_chain_id,
         vault_address_to_pool_id,
     )
 except ImportError:
@@ -49,9 +51,11 @@ except ImportError:
             from testnet.pool_ids import (
                 format_pool_id,
                 list_pools,
+                pool_id_to_chain_id,
                 pool_id_to_name,
                 pool_id_to_vault_address,
                 pool_name_to_id,
+                vault_address_to_chain_id,
                 vault_address_to_pool_id,
             )
         except ImportError:
@@ -88,11 +92,11 @@ except ImportError:
                 """Fallback: return None."""
                 return None
             
-            def pool_id_to_vault_address(pool_id: str) -> str | None:
+            def pool_id_to_chain_id(pool_id: str) -> int | None:
                 """Fallback: return None."""
                 return None
             
-            def vault_address_to_pool_id(vault_address: str) -> str | None:
+            def vault_address_to_chain_id(vault_address: str) -> int | None:
                 """Fallback: return None."""
                 return None
 
@@ -237,20 +241,8 @@ def prove_lock(
         # Step 5: Collect lock parameters
         console.print(f"\n[bold cyan]Collecting lock parameters...[/]")
 
-        # Chain ID
-        if chain is None:
-            while True:
-                try:
-                    chain_input = typer.prompt("Chain ID", show_default=False)
-                    chain = int(chain_input)
-                    if chain <= 0:
-                        console.print(
-                            "[bold red]Error:[/] Chain ID must be a positive integer"
-                        )
-                        continue
-                    break
-                except ValueError:
-                    console.print("[bold red]Error:[/] Chain ID must be a valid integer")
+        # Chain ID - will be auto-detected after pool_id/vault is selected
+        # We'll set it after vault matching
 
         # Pool ID (collect first, then auto-match vault)
         available_pools = list_pools()
@@ -343,6 +335,69 @@ def prove_lock(
                         raise typer.Exit(code=1)
             else:
                 exit_with_error("Invalid vault address format")
+        
+        # Auto-match chain ID from pool ID or vault address
+        if chain is None:
+            # Try to get chain ID from pool ID first
+            auto_chain_id = None
+            try:
+                auto_chain_id = pool_id_to_chain_id(pool_id)
+            except NameError:
+                # Function not available - this shouldn't happen if imports worked
+                # But handle gracefully by trying to import it
+                try:
+                    from testnet.pool_ids import pool_id_to_chain_id
+                    auto_chain_id = pool_id_to_chain_id(pool_id)
+                except ImportError:
+                    pass
+            
+            if not auto_chain_id:
+                # Fallback: try to get from vault address
+                try:
+                    auto_chain_id = vault_address_to_chain_id(vault)
+                except NameError:
+                    try:
+                        from testnet.pool_ids import vault_address_to_chain_id
+                        auto_chain_id = vault_address_to_chain_id(vault)
+                    except ImportError:
+                        pass
+            
+            if auto_chain_id:
+                chain = auto_chain_id
+                chain_name = "Base Sepolia" if chain == 84532 else f"Chain {chain}"
+                console.print(
+                    f"[bold green]✓ Auto-matched chain ID[/] - {chain_name} (chain ID: {chain})"
+                )
+            else:
+                # Fallback: prompt for chain ID if no mapping found
+                console.print(
+                    "[yellow]⚠ No chain ID mapping found. Please provide chain ID.[/]"
+                )
+                while True:
+                    try:
+                        chain_input = typer.prompt("Chain ID", show_default=False)
+                        chain = int(chain_input)
+                        if chain <= 0:
+                            console.print(
+                                "[bold red]Error:[/] Chain ID must be a positive integer"
+                            )
+                            continue
+                        break
+                    except ValueError:
+                        console.print("[bold red]Error:[/] Chain ID must be a valid integer")
+        else:
+            # Chain ID was provided, verify it matches vault if possible
+            expected_chain_id = vault_address_to_chain_id(vault)
+            if expected_chain_id and expected_chain_id != chain:
+                chain_name = "Base Sepolia" if expected_chain_id == 84532 else f"Chain {expected_chain_id}"
+                console.print(
+                    f"[bold yellow]⚠ Warning:[/] Vault {vault} is on {chain_name} (chain ID: {expected_chain_id}), "
+                    f"but you specified chain ID {chain}"
+                )
+                if not Confirm.ask(
+                    "[yellow]Continue anyway?[/]", default=False
+                ):
+                    raise typer.Exit(code=1)
 
     # Amount
         amount_base_units: int | None = None
@@ -500,11 +555,7 @@ def prove_lock(
         console.print(f"   [yellow]spender[/] (address): {vault}")
         console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
         console.print()
-        console.print("  7. Click [bold]'Write'[/] and confirm in MetaMask")
-        console.print()
-        console.print("[dim]Alternative: Use MetaMask directly with this transaction data:[/]")
-        console.print(f"   To: {approve_tx['to']}")
-        console.print(f"   Data: {approve_tx['data']}")
+        console.print("  7. Click [bold]'Write'[/] and confirm succeed with the transaction hash")
         console.print()
 
         # Wait for user confirmation before showing Phase 2
@@ -575,11 +626,7 @@ def prove_lock(
         console.print(f"   [yellow]timestamp[/] (uint256): {timestamp}")
         console.print(f"   [yellow]signature[/] (bytes): {signature_normalized}")
         console.print()
-        console.print("  7. Click [bold]'Write'[/] and confirm in MetaMask")
-        console.print()
-        console.print("[dim]Alternative: Use MetaMask directly with this transaction:[/]")
-        console.print(f"   To: {lock_tx['to']}")
-        console.print(f"   Data: {lock_tx['data']}")
+        console.print("  7. Click [bold]'Write'[/], confirm the  success transaction and copy the transaction hash")
         console.print()
 
         console.print(
