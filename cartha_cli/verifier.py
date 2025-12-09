@@ -309,6 +309,21 @@ def get_lock_status(
     )
 
 
+def process_lock_transaction(
+    *,
+    tx_hash: str,
+) -> dict[str, Any]:
+    """Trigger immediate processing of a lock transaction.
+    
+    Returns: {success: bool, action: str, hotkey: str, slot: str, ...}
+    """
+    return _request(
+        "POST",
+        "/lock/process",
+        json_data={"tx_hash": tx_hash},
+    )
+
+
 # REMOVED: Old endpoints - replaced by new lock flow
 # fetch_pair_password, register_pair_password, submit_lock_proof removed
 
@@ -323,4 +338,5 @@ __all__ = [
     "verify_hotkey",
     "request_lock_signature",
     "get_lock_status",
+    "process_lock_transaction",
 ]
