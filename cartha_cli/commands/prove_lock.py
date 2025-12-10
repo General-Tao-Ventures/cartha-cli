@@ -780,18 +780,225 @@ def prove_lock(
             console.print(f"[bold yellow]Warning:[/] Could not open browser automatically: {e}")
             console.print(f"Please manually open: [cyan]{phase2_url}[/]")
         console.print()
-
-        console.print(
-            "[bold green]✓ Lock flow complete![/]"
-        )
-        console.print()
         console.print(
             "[dim]The verifier will automatically detect the lock after you execute the transaction.[/]"
         )
         console.print(
-            f"[dim]You can check your lock status anytime with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+            f"[dim]You can also check status with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
         )
-        console.print()
+
+        # Step 9: Optionally poll for status
+        if Confirm.ask(
+            "\n[bold cyan]Poll for lock status after transaction?[/] (Enter transaction hash when ready)",
+            default=False,
+        ):
+            while True:
+                tx_hash = typer.prompt(
+                    "Transaction hash (0x...)", show_default=False
+                )
+                tx_hash_normalized = normalize_hex(tx_hash)
+                if len(tx_hash_normalized) == 66:
+                    break
+                console.print(
+                    "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
+                )
+
+            console.print()  # Empty line before polling
+            max_polls = 10
+            poll_interval = 5  # seconds
+
+            with Status(
+                "[bold cyan]Polling for lock status...[/]",
+                console=console,
+                spinner="dots",
+            ) as status:
+                for poll_num in range(max_polls):
+                    try:
+                        status.update(
+                            f"[bold cyan]Checking lock status... (attempt {poll_num + 1}/{max_polls})[/]"
+                        )
+                        status_result = get_lock_status(tx_hash=tx_hash_normalized)
+                        if status_result.get("verified"):
+                            status.stop()
+                            console.print("\n[bold green]✓ Lock verified![/]")
+                            console.print(
+                                f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
+                            )
+                            console.print(
+                                f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
+                            )
+                            break
+                        else:
+                            # Check if event was found on-chain but not yet processed
+                            message = status_result.get("message", "")
+                            if "found on-chain but not yet processed" in message.lower():
+                                # Try to trigger immediate processing
+                                try:
+                                    status.update(
+                                        f"[bold cyan]Lock detected on-chain, triggering immediate processing... (attempt {poll_num + 1}/{max_polls})[/]"
+                                    )
+                                    process_result = process_lock_transaction(tx_hash=tx_hash_normalized)
+                                    if process_result.get("success"):
+                                        # Processing succeeded, verify status with a brief retry
+                                        status.update(
+                                            f"[bold cyan]Processing succeeded, verifying status... (attempt {poll_num + 1}/{max_polls})[/]"
+                                        )
+                                        # Give database a moment to commit, then check status
+                                        time.sleep(1.5)  # Slightly longer delay for database commit
+                                        
+                                        # Try checking status up to 3 times with short delays
+                                        verified = False
+                                        status_result = None
+                                        for retry in range(3):
+                                            try:
+                                                status_result = get_lock_status(tx_hash=tx_hash_normalized)
+                                                if status_result.get("verified"):
+                                                    verified = True
+                                                    break
+                                                elif retry < 2:
+                                                    # Brief delay before retry
+                                                    time.sleep(0.5)
+                                            except Exception:
+                                                # If status check fails, continue retrying
+                                                if retry < 2:
+                                                    time.sleep(0.5)
+                                                continue
+                                        
+                                        # Stop polling - processing succeeded
+                                        status.stop()
+                                        
+                                        if verified and status_result:
+                                            # Status check confirmed verification
+                                            console.print("\n[bold green]✓ Lock verified![/]")
+                                            console.print(
+                                                f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
+                                            )
+                                        else:
+                                            # Processing succeeded but status check didn't confirm yet (timing issue)
+                                            console.print("\n[bold green]✓ Lock processing completed![/]")
+                                            console.print(
+                                                f"[bold cyan]Action:[/] {process_result.get('action', 'processed')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Hotkey:[/] {process_result.get('hotkey', 'N/A')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Slot:[/] {process_result.get('slot', 'N/A')}"
+                                            )
+                                            console.print(
+                                                f"[bold cyan]Epoch:[/] {process_result.get('epoch_version', 'N/A')}"
+                                            )
+                                            console.print(
+                                                "\n[dim]Status check may take a moment to reflect. "
+                                                "You can verify with: [bold]cartha miner status[/][/]"
+                                            )
+                                        break
+                                    else:
+                                        # Processing didn't succeed (e.g., couldn't match to miner)
+                                        if poll_num < max_polls - 1:
+                                            status.update(
+                                                f"[bold cyan]Processing failed, waiting for automatic detection... (attempt {poll_num + 1}/{max_polls})[/]"
+                                            )
+                                            time.sleep(poll_interval)
+                                        else:
+                                            status.stop()
+                                            console.print(
+                                                "\n[yellow]Lock detected on-chain but processing failed.[/]"
+                                            )
+                                            console.print(
+                                                "[dim]The verifier will process it automatically within the next hour.[/]"
+                                            )
+                                            console.print(
+                                                f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+                                            )
+                                except VerifierError as process_exc:
+                                    # Processing failed, continue polling
+                                    if poll_num < max_polls - 1:
+                                        status.update(
+                                            f"[bold cyan]Processing failed, waiting for automatic detection... (attempt {poll_num + 1}/{max_polls})[/]"
+                                        )
+                                        time.sleep(poll_interval)
+                                    else:
+                                        status.stop()
+                                        console.print(
+                                            "\n[yellow]Lock detected on-chain but processing failed.[/]"
+                                        )
+                                        console.print(
+                                            "[dim]The verifier will process it automatically within the next hour.[/]"
+                                        )
+                                        console.print(
+                                            f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+                                        )
+                                except Exception as process_exc:
+                                    # Unexpected error, continue polling
+                                    if poll_num < max_polls - 1:
+                                        status.update(
+                                            f"[bold cyan]Waiting for verification... (attempt {poll_num + 1}/{max_polls})[/]"
+                                        )
+                                        time.sleep(poll_interval)
+                                    else:
+                                        status.stop()
+                                        console.print(
+                                            "\n[yellow]Lock detected on-chain but not yet processed by verifier.[/]"
+                                        )
+                                        console.print(
+                                            "[dim]The verifier polls every hour and will process it automatically.[/]"
+                                        )
+                                        console.print(
+                                            f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+                                        )
+                            else:
+                                # Not found on-chain yet, continue polling
+                                if poll_num < max_polls - 1:
+                                    status.update(
+                                        f"[bold cyan]Waiting for transaction confirmation... (attempt {poll_num + 1}/{max_polls})[/]"
+                                    )
+                                    time.sleep(poll_interval)
+                                else:
+                                    status.stop()
+                                    console.print(
+                                        "\n[yellow]Lock transaction not yet detected on-chain.[/]"
+                                    )
+                                    console.print(
+                                        "[dim]Please verify the transaction hash is correct and try again later.[/]"
+                                    )
+                                    console.print(
+                                        f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+                                    )
+                    except KeyboardInterrupt:
+                        status.stop()
+                        console.print("\n[yellow]Polling interrupted by user.[/]")
+                        break
+                    except Exception as exc:
+                        # Network errors - continue polling
+                        if poll_num < max_polls - 1:
+                            status.update(
+                                f"[yellow]Network error, retrying... (check {poll_num + 1}/{max_polls})[/]"
+                            )
+                            time.sleep(poll_interval)
+                        else:
+                            status.stop()
+                            console.print(f"\n[yellow]Could not verify lock status: {exc}[/]")
+                            console.print(
+                                f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+                            )
+                            break
+        else:
+            console.print()
+            console.print(
+                "[bold green]✓ Lock flow complete![/]"
+            )
+            console.print()
+            console.print(
+                "[dim]The verifier will automatically detect the lock after you execute the transaction.[/]"
+            )
+            console.print(
+                f"[dim]You can check your lock status anytime with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+            )
+            console.print()
 
     except typer.Exit:
         raise
