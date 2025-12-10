@@ -116,6 +116,7 @@ def health_check(
     bt_ok = False
     bt_status = "Unknown"
     bt_latency_ms = None
+    bt_is_dns_error = False
     
     try:
         start_time = time.time()
@@ -133,16 +134,39 @@ def health_check(
             bt_status = "Connected but invalid block number"
             console.print(f"[bold yellow]⚠ Bittensor network check warning[/]: {bt_status}")
             checks_warning += 1
+    except OSError as exc:
+        # DNS resolution errors (Errno 8)
+        error_str = str(exc)
+        if "nodename nor servname provided" in error_str or "Errno 8" in error_str:
+            bt_is_dns_error = True
+            bt_status = "DNS resolution failed - cannot resolve Bittensor network endpoints"
+            console.print(f"[bold yellow]⚠ Bittensor network check failed[/]: DNS resolution error")
+            console.print("[dim]This usually indicates a network connectivity or DNS configuration issue.[/]")
+            checks_warning += 1  # Make it a warning since verifier is working
+        else:
+            bt_status = f"Network error: {exc}"
+            console.print(f"[bold red]✗ Bittensor network check failed[/]: {exc}")
+            checks_failed += 1
     except Exception as exc:
-        bt_status = f"Error: {exc}"
-        console.print(f"[bold red]✗ Bittensor network check failed[/]: {exc}")
-        checks_failed += 1
+        error_str = str(exc)
+        # Check if it's a DNS/network related error
+        if any(keyword in error_str.lower() for keyword in ["dns", "resolve", "nodename", "servname", "network", "connection"]):
+            bt_is_dns_error = True
+            bt_status = f"Network connectivity issue: {exc}"
+            console.print(f"[bold yellow]⚠ Bittensor network check failed[/]: {exc}")
+            console.print("[dim]This may be a temporary network issue. The CLI can still work if the verifier is accessible.[/]")
+            checks_warning += 1
+        else:
+            bt_status = f"Error: {exc}"
+            console.print(f"[bold red]✗ Bittensor network check failed[/]: {exc}")
+            checks_failed += 1
     
     results.append({
         "name": "Bittensor Network",
         "status": "pass" if bt_ok else ("warning" if checks_warning > 0 else "fail"),
         "details": bt_status,
         "latency_ms": bt_latency_ms,
+        "is_dns_error": bt_is_dns_error,
     })
     
     # Check 3: Configuration validation
@@ -189,6 +213,7 @@ def health_check(
     subnet_status = "Unknown"
     subnet_latency_ms = None
     subnet_info: dict[str, Any] = {}
+    subnet_is_dns_error = False
     
     try:
         start_time = time.time()
@@ -235,17 +260,38 @@ def health_check(
             if block is not None:
                 console.print(f"  • Block: {block}")
         checks_passed += 1
+    except OSError as exc:
+        # DNS resolution errors (Errno 8)
+        error_str = str(exc)
+        if "nodename nor servname provided" in error_str or "Errno 8" in error_str:
+            subnet_is_dns_error = True
+            subnet_status = "DNS resolution failed - cannot resolve Bittensor network endpoints"
+            console.print(f"[bold yellow]⚠ Subnet metadata check failed[/]: DNS resolution error")
+            checks_warning += 1  # Make it a warning since verifier is working
+        else:
+            subnet_status = f"Network error: {exc}"
+            console.print(f"[bold red]✗ Subnet metadata check failed[/]: {exc}")
+            checks_failed += 1
     except Exception as exc:
-        subnet_status = f"Error: {exc}"
-        console.print(f"[bold red]✗ Subnet metadata check failed[/]: {exc}")
-        checks_failed += 1
+        error_str = str(exc)
+        # Check if it's a DNS/network related error
+        if any(keyword in error_str.lower() for keyword in ["dns", "resolve", "nodename", "servname", "network", "connection"]):
+            subnet_is_dns_error = True
+            subnet_status = f"Network connectivity issue: {exc}"
+            console.print(f"[bold yellow]⚠ Subnet metadata check failed[/]: {exc}")
+            checks_warning += 1
+        else:
+            subnet_status = f"Error: {exc}"
+            console.print(f"[bold red]✗ Subnet metadata check failed[/]: {exc}")
+            checks_failed += 1
     
     results.append({
         "name": "Subnet Metadata",
-        "status": "pass" if subnet_ok else "fail",
+        "status": "pass" if subnet_ok else ("warning" if checks_warning > 0 else "fail"),
         "details": subnet_status,
         "latency_ms": subnet_latency_ms,
         "info": subnet_info if subnet_ok else None,
+        "is_dns_error": subnet_is_dns_error,
     })
     
     # Check 5: Environment Variables
@@ -342,10 +388,19 @@ def health_check(
         console.print("[bold green]✓ All checks passed![/] CLI is ready to use.")
         raise typer.Exit(code=0)
     elif checks_failed == 0:
-        console.print(
-            f"[bold yellow]⚠ {checks_warning} warning(s) found[/], but CLI should work. "
-            "Review configuration if needed."
-        )
+        # Check if warnings are DNS-related
+        dns_warnings = [r for r in results if r.get("is_dns_error") and r.get("status") == "warning"]
+        if dns_warnings:
+            console.print(
+                f"[bold yellow]⚠ {checks_warning} warning(s) found[/] (including DNS resolution issues). "
+                "CLI should work for most commands, but Bittensor network features may be limited."
+            )
+            console.print("[dim]If you need to register or check miner status, ensure Bittensor network connectivity.[/]")
+        else:
+            console.print(
+                f"[bold yellow]⚠ {checks_warning} warning(s) found[/], but CLI should work. "
+                "Review configuration if needed."
+            )
         raise typer.Exit(code=0)
     else:
         console.print(
@@ -358,5 +413,24 @@ def health_check(
             console.print(f"• Verify verifier URL: {settings.verifier_url}")
             console.print(f"• Verify Bittensor network: {settings.network}")
             console.print("• Check environment variables: CARTHA_VERIFIER_URL, CARTHA_NETWORK, CARTHA_NETUID")
+            
+            # Check if DNS errors occurred
+            dns_errors = [r for r in results if r.get("is_dns_error")]
+            if dns_errors:
+                console.print("\n[bold yellow]DNS Resolution Issues Detected:[/]")
+                console.print("The following checks failed due to DNS resolution errors:")
+                for result in dns_errors:
+                    console.print(f"  • {result['name']}: {result['details']}")
+                console.print("\n[bold]DNS Troubleshooting Steps:[/]")
+                console.print("  1. Check your internet connection")
+                console.print("  2. Try flushing DNS cache:")
+                console.print("     • macOS: sudo dscacheutil -flushcache; sudo killall -HUP mDNSResponder")
+                console.print("     • Linux: sudo systemd-resolve --flush-caches (or sudo resolvectl flush-caches)")
+                console.print("     • Windows: ipconfig /flushdns")
+                console.print("  3. Check if you're behind a firewall or proxy")
+                console.print("  4. Try using a different network (e.g., mobile hotspot)")
+                console.print("  5. Check if DNS servers are reachable: nslookup <domain>")
+                console.print("\n[dim]Note: If the verifier check passed, you can still use most CLI commands.[/]")
+                console.print("[dim]Bittensor network connectivity is only needed for registration and status checks.[/]")
         raise typer.Exit(code=1)
 
