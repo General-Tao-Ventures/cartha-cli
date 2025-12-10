@@ -208,9 +208,9 @@ This will:
 
 **Save the output** - you'll need your slot UID.
 
-### Step 3: Lock Funds Using New Flow
+### Step 3: Lock Funds Using Cartha Lock UI
 
-Use the new interactive lock flow to create a lock position:
+Use the streamlined lock flow with the Cartha Lock UI:
 
 ```bash
 uv run cartha vault lock \
@@ -229,20 +229,26 @@ This command will:
 1. **Check Registration**: Verify your hotkey is registered on the subnet
 2. **Authenticate**: Sign a challenge message with your Bittensor hotkey to get a session token
 3. **Request Signature**: Get an EIP-712 LockRequest signature from the verifier
-4. **Display Transactions**: Show you the `USDC.approve` and `CarthaVault.lock` transaction data
-5. **Execute in MetaMask**: You'll execute these transactions in MetaMask (or your EVM wallet)
-6. **Poll Status**: Automatically poll for transaction confirmation and verification
+4. **Open Cartha Lock UI**: Automatically opens the web interface in your browser with all parameters pre-filled
+5. **Phase 1 - Approve USDC**: Connect your wallet and approve USDC spending through the frontend. The CLI automatically detects when approval completes
+6. **Phase 2 - Lock Position**: Lock your USDC in the vault contract through the frontend
+7. **Auto-Detection**: The verifier automatically detects your `LockCreated` event and adds you to the upcoming epoch
 
 **Important Notes**:
-- Make sure you're connected to **Base Sepolia** network in MetaMask (not Mainnet!)
+- Make sure you're connected to **Base Sepolia** network in your wallet (not Mainnet!)
 - You'll need testnet USDC in your EVM wallet (contact team if you don't have any)
-- The CLI will display the exact transaction data for you to copy into MetaMask
-- You'll need to approve the vault to spend USDC before you can lock funds
+- The frontend supports MetaMask, Coinbase Wallet, Talisman, and WalletConnect
+- Make sure the wallet you connect matches the `--owner-evm` address specified in the CLI
+- The frontend includes wallet validation to prevent using the wrong address
 
 **Transaction Flow**:
-1. **Approve USDC**: First transaction approves the vault to spend your USDC
-2. **Lock Position**: Second transaction locks your USDC in the vault
+1. **Approve USDC**: First transaction approves the vault to spend your USDC (handled in frontend)
+2. **Lock Position**: Second transaction locks your USDC in the vault (handled in frontend)
 3. Both transactions require gas fees (paid in testnet ETH)
+
+**Managing Existing Positions**:
+- Visit https://cartha-lock.vercel.app and navigate to "My Positions" to view all your locks
+- Use "Extend" or "Top Up" buttons to modify existing positions (currently in testing - may not work properly yet)
 
 ### Step 4: Check Miner Status
 
@@ -407,44 +413,20 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 - Request testnet USDC for testing
 - Wait for the team to send you testnet USDC
 - Verify receipt on [BaseScan Sepolia](https://sepolia.basescan.org/)
+- **Coming Soon**: Automated faucet will be available on the Cartha Lock UI at https://cartha-lock.vercel.app/faucet
 
-### "Write as Proxy" tab not showing on BaseScan
+### "Wrong wallet connected" or "Wallet address mismatch"
 
-**Problem**: When trying to lock funds, you can't find the "Write as Proxy" tab on BaseScan
+**Problem**: The frontend shows a warning that the connected wallet doesn't match the required owner address
 
 **Solution**:
 
-The Cartha vault contracts are UUPS upgradeable proxy contracts. BaseScan needs to verify the proxy relationship before showing the "Write as Proxy" tab. Follow these steps:
+1. **Disconnect your current wallet** using the "Disconnect" button in the frontend
+2. **Connect the correct wallet** that matches the `--owner-evm` address you specified in the CLI
+3. **Verify the address** - The frontend will show "Required Owner" vs "Connected Wallet" to help you identify the mismatch
+4. If you need to use a different address, restart the CLI command with the correct `--owner-evm` address
 
-1. **Navigate to the vault contract** on BaseScan:
-   - Go to: `https://sepolia.basescan.org/address/{VAULT_ADDRESS}`
-   - Replace `{VAULT_ADDRESS}` with your vault address (e.g., `0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69` for BTC/USD)
-
-2. **Click the "Contract" tab** (if not already selected)
-
-3. **Click the "Code" sub-tab** (under Contract)
-
-4. **Find "More Options"** on the right side of the page (look for a three-dots menu or "More Options" button)
-
-5. **Click "Is this a proxy?"** from the More Options menu
-
-6. **Click "Verify"** to link the proxy to its implementation contract
-
-7. **Wait for verification** - BaseScan will automatically detect and link the implementation contract (may take a few seconds)
-
-8. **Refresh the page** - After verification completes, you should now see:
-   - "Read as Proxy" tab
-   - "Write as Proxy" tab
-
-9. **Click "Write as Proxy"** tab to access the `lock` function
-
-**Note**: This verification is a one-time process per contract. Once verified, the "Write as Proxy" tab will remain available for that contract address.
-
-**If verification fails**:
-- Make sure you're on the correct network (Base Sepolia)
-- Try refreshing the page
-- Check that the contract address is correct
-- Contact the Cartha team if the issue persists
+**Note**: The frontend includes automatic wallet validation to prevent this issue. Always ensure you connect the wallet that matches the address specified in the CLI command.
 
 ## Testing Your Setup
 
