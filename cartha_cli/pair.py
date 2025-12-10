@@ -11,7 +11,7 @@ from rich.console import Console
 
 from .bt import get_subtensor
 from .utils import format_timestamp
-from .verifier import VerifierError, check_registration, fetch_pair_status
+from .verifier import VerifierError, fetch_pair_status
 from .wallet import CHALLENGE_PREFIX, CHALLENGE_TTL_SECONDS, load_wallet
 
 console = Console()
@@ -25,9 +25,6 @@ def get_uid_from_hotkey(
 ) -> int | None:
     """Get the UID for a hotkey on the subnet.
 
-    First tries the verifier API (doesn't require Bittensor network access),
-    then falls back to direct Bittensor network connection if verifier fails.
-
     Args:
         network: Bittensor network name
         netuid: Subnet netuid
@@ -36,26 +33,8 @@ def get_uid_from_hotkey(
     Returns:
         UID if registered, None if not registered or deregistered
     """
-    # Try verifier API first (doesn't require Bittensor network access)
-    try:
-        result = check_registration(hotkey=hotkey)
-        if result.get("registered"):
-            uid = result.get("uid")
-            if uid is not None:
-                return int(uid)
-        # Not registered according to verifier
-        return None
-    except VerifierError:
-        # Verifier unavailable or error - fall back to direct Bittensor network
-        console.print(
-            "[dim]Verifier registration check unavailable, trying direct Bittensor network...[/]"
-        )
-    except Exception:
-        # Other verifier errors - fall back to direct Bittensor network
-        pass
-
-    # Fallback: Try direct Bittensor network connection
     subtensor = None
+
     try:
         subtensor = get_subtensor(network)
 
@@ -77,18 +56,11 @@ def get_uid_from_hotkey(
     except Exception as exc:
         error_msg = str(exc)
         if "nodename" in error_msg.lower() or "servname" in error_msg.lower():
-            # DNS error - provide helpful message
             console.print(
-                f"[bold yellow]Warning[/]: Unable to connect to Bittensor {network} network: {error_msg}"
+                f"[bold red]Network error[/]: Unable to connect to Bittensor {network} network: {error_msg}"
             )
             console.print(
-                "[yellow]This might be a DNS/network connectivity issue.[/]"
-            )
-            console.print(
-                "[dim]The verifier API was also unavailable, so registration cannot be verified.[/]"
-            )
-            console.print(
-                "[dim]Please check your internet connection or try again later.[/]"
+                "[yellow]This might be a DNS/network connectivity issue. Please check your internet connection.[/]"
             )
             raise typer.Exit(code=1) from None
         # Re-raise other exceptions as-is
