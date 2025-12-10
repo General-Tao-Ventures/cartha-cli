@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import time
+import webbrowser
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import typer
 from rich import box
@@ -559,6 +561,26 @@ def prove_lock(
         console.print("  7. Click [bold]'Write'[/] and confirm succeed with the transaction hash")
         console.print()
 
+        # Open browser with frontend URL for Phase 1
+        frontend_url = settings.lock_ui_url
+        phase1_params = {
+            "phase": "1",
+            "chainId": str(chain_id),
+            "usdcAddress": "0x2340D09c348930A76c8c2783EDa8610F699A51A8",
+            "vaultAddress": vault,
+            "spender": vault,
+            "amount": str(amount_base_units),
+            "owner": owner,
+        }
+        phase1_url = f"{frontend_url}?{urlencode(phase1_params)}"
+        console.print(f"\n[bold cyan]Opening lock interface...[/]")
+        console.print(f"URL: [cyan]{phase1_url}[/]")
+        try:
+            webbrowser.open(phase1_url)
+        except Exception as e:
+            console.print(f"[bold yellow]Warning:[/] Could not open browser automatically: {e}")
+            console.print(f"Please manually open: [cyan]{phase1_url}[/]")
+
         # Wait for user confirmation before showing Phase 2
         if not Confirm.ask(
             "\n[bold yellow]Have you completed the approve transaction?[/] (Type 'yes' to continue to Phase 2)",
@@ -628,6 +650,30 @@ def prove_lock(
         console.print(f"   [yellow]signature[/] (bytes): {signature_normalized}")
         console.print()
         console.print("  7. Click [bold]'Write'[/], confirm the  success transaction and copy the transaction hash")
+        console.print()
+
+        # Open browser with frontend URL for Phase 2
+        frontend_url = settings.lock_ui_url
+        phase2_params = {
+            "phase": "2",
+            "chainId": str(chain_id),
+            "vaultAddress": lock_tx['to'],
+            "poolId": pool_id_normalized,
+            "amount": str(amount_base_units),
+            "lockDays": str(lock_days),
+            "hotkey": hotkey_hex,
+            "timestamp": str(timestamp),
+            "signature": signature_normalized,
+            "owner": owner,
+        }
+        phase2_url = f"{frontend_url}?{urlencode(phase2_params)}"
+        console.print(f"\n[bold cyan]Opening lock interface for Phase 2...[/]")
+        console.print(f"URL: [cyan]{phase2_url}[/]")
+        try:
+            webbrowser.open(phase2_url)
+        except Exception as e:
+            console.print(f"[bold yellow]Warning:[/] Could not open browser automatically: {e}")
+            console.print(f"Please manually open: [cyan]{phase2_url}[/]")
         console.print()
 
         console.print(
