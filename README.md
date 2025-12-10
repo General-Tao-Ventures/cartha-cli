@@ -82,7 +82,7 @@ Create a new lock position with the streamlined lock flow:
 cartha vault lock \
   --coldkey your-wallet \
   --hotkey your-hotkey \
-  --pool-id "BTC/USD" \
+  --pool-id "BTCUSD" \
   --amount 1000.0 \
   --lock-days 30 \
   --owner-evm 0xYourEVMAddress \

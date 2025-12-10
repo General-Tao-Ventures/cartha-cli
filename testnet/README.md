@@ -218,7 +218,7 @@ Use the streamlined lock flow with the Cartha Lock UI:
 uv run cartha vault lock \
   --coldkey <your-coldkey-name> \
   --hotkey <your-hotkey-name> \
-  --pool-id BTC/USD \
+  --pool-id BTCUSD \
   --amount 100.0 \
   --lock-days 30 \
   --owner-evm 0xYourEVMAddress
@@ -277,7 +277,7 @@ This will show:
 ## Pool IDs and Vault Addresses
 
 Pool IDs can be specified as either:
-- **Human-readable names**: `BTC/USD`, `EUR/USD`, `ETH/USD`, etc.
+- **Human-readable names**: `BTCUSD`, `EUR/USD`, `ETH/USD`, etc.
 - **Hex strings**: `0x...` (32 bytes)
 
 The CLI automatically converts readable names to hex format and matches them to the correct vault address.
@@ -286,11 +286,11 @@ The CLI automatically converts readable names to hex format and matches them to 
 
 | Pool Name | Pool ID (hex) | Vault Address |
 |-----------|---------------|---------------|
-| BTC/USD | `0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489` | `0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69` |
+| BTCUSD | `0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489` | `0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69` |
 | ETH/USD | `0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45` | `0xdB74B44957A71c95406C316f8d3c5571FA588248` |
 | EUR/USD | `0xa9226449042e36bf6865099eec57482aa55e3ad026c315a0e4a692b776c318ca` | `0x3C4dAfAC827140B8a031d994b7e06A25B9f27BAD` |
 
-**Note**: When using `cartha vault lock`, you can simply specify `--pool-id BTC/USD` and the CLI will automatically:
+**Note**: When using `cartha vault lock`, you can simply specify `--pool-id BTCUSD` and the CLI will automatically:
 - Match the correct vault address for that pool
 - Match the correct chain ID (Base Sepolia: 84532)
 
@@ -458,7 +458,7 @@ uv run cartha miner status --wallet-name test --wallet-hotkey test
 uv run cartha vault lock \
   --coldkey test \
   --hotkey test \
-  --pool-id BTC/USD \
+  --pool-id BTCUSD \
   --amount 100.0 \
   --lock-days 30 \
   --owner-evm 0xYourEVMAddress
@@ -466,7 +466,7 @@ uv run cartha vault lock \
 
 **Important**: 
 - Chain ID (84532 for Base Sepolia) and vault address are **automatically detected** from the pool ID
-- You only need to specify `--pool-id BTC/USD` (or `ETH/USD`, `EUR/USD`)
+- You only need to specify `--pool-id BTCUSD` (or `ETH/USD`, `EUR/USD`)
 - The CLI will show you the auto-matched values before proceeding
 
 ## Next Steps

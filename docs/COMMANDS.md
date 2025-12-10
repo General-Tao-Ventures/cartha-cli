@@ -276,7 +276,7 @@ cartha v lock [OPTIONS]
 | --- | --- | --- | --- |
 | `--coldkey`, `-c` | string | Yes | Coldkey wallet name |
 | `--hotkey`, `-h` | string | Yes | Hotkey name within the wallet |
-| `--pool-id` | string | Yes | Pool ID (readable name like 'BTC/USD' or hex string like '0x...') |
+| `--pool-id` | string | Yes | Pool ID (readable name like 'BTCUSD' or hex string like '0x...') |
 | `--amount` | string | Yes | Amount of USDC to lock (e.g., '100.0') |
 | `--lock-days` | integer | Yes | Number of days to lock (7-365) |
 | `--owner-evm` | string | Yes | EVM address that will own the lock position |
@@ -291,7 +291,7 @@ cartha v lock [OPTIONS]
 cartha vault lock \
   --coldkey my-coldkey \
   --hotkey my-hotkey \
-  --pool-id BTC/USD \
+  --pool-id BTCUSD \
   --amount 100.0 \
   --lock-days 30 \
   --owner-evm 0x1234567890123456789012345678901234567890 \
@@ -313,7 +313,7 @@ cartha v lock \
 cartha vault lock \
   --coldkey my-coldkey \
   --hotkey my-hotkey \
-  --pool-id BTC/USD \
+  --pool-id BTCUSD \
   --amount 100.0 \
   --lock-days 30 \
   --owner-evm 0xEVM... \
@@ -691,7 +691,7 @@ export CARTHA_RETRY_BACKOFF_FACTOR=2.0
    cartha vault lock \
      --coldkey my-coldkey \
      --hotkey my-hotkey \
-     --pool-id BTC/USD \
+     --pool-id BTCUSD \
      --amount 250.0 \
      --lock-days 30 \
      --owner-evm 0xYourEVMAddress \

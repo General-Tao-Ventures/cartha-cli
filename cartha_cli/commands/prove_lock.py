@@ -132,7 +132,7 @@ def prove_lock(
     pool_id: str | None = typer.Option(
         None,
         "--pool-id",
-        help="Pool ID (readable name or hex string, e.g., 'BTC/USD' or '0x...')",
+        help="Pool ID (readable name or hex string, e.g., 'BTCUSD' or '0x...')",
         show_default=False,
     ),
     amount: str | None = typer.Option(
