@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import time
+import webbrowser
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import typer
 from rich import box
@@ -539,62 +541,173 @@ def prove_lock(
         usdc_contract_address = "0x2340D09c348930A76c8c2783EDa8610F699A51A8"
         
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        console.print("[bold]Phase 1: Approve USDC (via BaseScan)[/]")
+        console.print("[bold]Phase 1: Approve USDC[/]")
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
         console.print()
-        console.print("[bold]Step-by-step instructions:[/]")
-        console.print("  1. Go to: [cyan]https://sepolia.basescan.org/address/0x2340D09c348930A76c8c2783EDa8610F699A51A8[/]")
-        console.print("  2. Click [bold]'Contract'[/] tab")
-        console.print("  3. Click [bold]'Write Contract'[/] tab")
-        console.print("  4. Click [bold]'Connect to Web3'[/] button and connect your EVM wallet")
-        console.print(f"     (Use the same wallet address as the owner: [cyan]{owner}[/])")
-        console.print("  5. Find and click [bold]'1. approve'[/] function")
-        console.print("  6. Fill in the fields:")
+        console.print("[bold]Fields for Frontend Approve Page:[/]")
         console.print()
-        console.print("[bold]Function: approve[/]")
-        console.print("[bold]Parameters:[/]")
+        console.print(f"   [yellow]Contract Address (USDC)[/]: {usdc_contract_address}")
         console.print(f"   [yellow]spender[/] (address): {vault}")
         console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
-        console.print()
-        console.print("  7. Click [bold]'Write'[/] and confirm succeed with the transaction hash")
+        console.print(f"   [yellow]owner[/] (address): {owner}")
         console.print()
 
-        # Wait for user confirmation before showing Phase 2
-        if not Confirm.ask(
-            "\n[bold yellow]Have you completed the approve transaction?[/] (Type 'yes' to continue to Phase 2)",
-            default=False
-        ):
-            console.print("[bold yellow]You can continue with Phase 2 later. The signature will expire in 5 minutes.[/]")
-            raise typer.Exit(code=0)
+        # Open browser with frontend URL for Phase 1
+        frontend_url = settings.lock_ui_url
+        phase1_params = {
+            "phase": "1",
+            "chainId": str(chain),
+            "usdcAddress": "0x2340D09c348930A76c8c2783EDa8610F699A51A8",
+            "vaultAddress": vault,
+            "spender": vault,
+            "amount": str(amount_base_units),
+            "owner": owner,
+        }
+        phase1_url = f"{frontend_url}?{urlencode(phase1_params)}"
+        console.print(f"\n[bold cyan]Opening lock interface...[/]")
+        console.print(f"URL: [cyan]{phase1_url}[/]")
+        try:
+            webbrowser.open(phase1_url)
+        except Exception as e:
+            console.print(f"[bold yellow]Warning:[/] Could not open browser automatically: {e}")
+            console.print(f"Please manually open: [cyan]{phase1_url}[/]")
 
-        # Step 9: Display Phase 2: Lock Position
-        console.print()
-        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        console.print("[bold]Phase 2: Lock Position (via BaseScan)[/]")
-        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
-        console.print()
-        # Verify vault address matches what we expect
-        if lock_tx['to'].lower() != vault.lower():
-            console.print(
-                f"[bold yellow]⚠ Warning:[/] Transaction vault address ({lock_tx['to']}) "
-                f"does not match selected vault ({vault})"
-            )
-        console.print("[bold]Vault Contract Address:[/]")
-        console.print(f"   {lock_tx['to']}")
-        console.print()
-        console.print("[bold]Step-by-step instructions:[/]")
-        console.print(f"  1. Go to: [cyan]https://sepolia.basescan.org/address/{lock_tx['to']}[/]")
-        console.print("  2. Click [bold]'Contract'[/] tab")
-        console.print("  3. Click [bold]'Write as Proxy'[/] tab")
-        console.print("  4. Click [bold]'Connect to Web3'[/] button and connect your EVM wallet")
-        console.print(f"     (Use the same wallet address as the owner: [cyan]{owner}[/])")
-        console.print("  5. Find and click [bold]'8. lock'[/] function")
-        console.print("  6. Fill in the fields:")
-        console.print()
-        console.print("[bold]Function: lock[/]")
-        console.print("[bold]Parameters:[/]")
+        # Auto-detect approval by polling USDC allowance
+        console.print(f"\n[bold cyan]Waiting for approval transaction...[/]")
+        console.print("[dim]The CLI will automatically detect when the approval is complete.[/]")
+        console.print("[dim]You can also press Ctrl+C to skip and continue manually.[/]")
         
-        # Calculate hotkey bytes32 (keccak256 of SS58 string)
+        # Base Sepolia RPC endpoint
+        base_sepolia_rpc = "https://sepolia.base.org"
+        
+        # ERC20 ABI for allowance function and Approval event
+        erc20_abi = [
+            {
+                "constant": True,
+                "inputs": [
+                    {"name": "_owner", "type": "address"},
+                    {"name": "_spender", "type": "address"}
+                ],
+                "name": "allowance",
+                "outputs": [{"name": "", "type": "uint256"}],
+                "type": "function"
+            },
+            {
+                "anonymous": False,
+                "inputs": [
+                    {"indexed": True, "name": "owner", "type": "address"},
+                    {"indexed": True, "name": "spender", "type": "address"},
+                    {"indexed": False, "name": "value", "type": "uint256"}
+                ],
+                "name": "Approval",
+                "type": "event"
+            }
+        ]
+        
+        max_polls = 60  # Poll for up to 5 minutes (60 * 5 seconds)
+        poll_interval = 5  # Check every 5 seconds
+        
+        approval_detected = False
+        try:
+            w3 = Web3(Web3.HTTPProvider(base_sepolia_rpc))
+            usdc_contract = w3.eth.contract(
+                address=Web3.to_checksum_address(usdc_contract_address),
+                abi=erc20_abi
+            )
+            
+            # Also check for Approval events to detect which address actually approved
+            # This helps if user approves with different wallet than specified
+            approval_event_signature = Web3.keccak(text="Approval(address,address,uint256)").hex()
+            
+            with Status(
+                "[bold cyan]Waiting for approval transaction...[/]",
+                console=console,
+                spinner="dots",
+            ) as status:
+                for poll_num in range(max_polls):
+                    try:
+                        # Check current allowance for the specified owner
+                        current_allowance = usdc_contract.functions.allowance(
+                            Web3.to_checksum_address(owner),
+                            Web3.to_checksum_address(vault)
+                        ).call()
+                        
+                        if current_allowance >= amount_base_units:
+                            approval_detected = True
+                            status.stop()
+                            console.print("\n[bold green]✓ Approval detected![/]")
+                            console.print(f"[dim]Current allowance: {current_allowance} (required: {amount_base_units})[/]")
+                            break
+                        
+                        # Also check recent Approval events to see if approval happened with different address
+                        # Get latest block number
+                        latest_block = w3.eth.block_number
+                        # Check last 10 blocks for Approval events
+                        from_block = max(0, latest_block - 10)
+                        
+                        try:
+                            # Filter for Approval events where spender is the vault
+                            events = usdc_contract.events.Approval.get_logs(
+                                fromBlock=from_block,
+                                toBlock=latest_block,
+                                argument_filters={'spender': Web3.to_checksum_address(vault)}
+                            )
+                            
+                            # Check if any recent approval has sufficient amount
+                            for event in events:
+                                if event.args.value >= amount_base_units:
+                                    # Found approval with sufficient amount, but from different owner
+                                    actual_owner = event.args.owner
+                                    if actual_owner.lower() != owner.lower():
+                                        status.stop()
+                                        console.print(f"\n[yellow]⚠ Approval detected, but from different address![/]")
+                                        console.print(f"[dim]Expected owner: {owner}[/]")
+                                        console.print(f"[dim]Actual approver: {actual_owner}[/]")
+                                        console.print(f"[dim]Approval amount: {event.args.value} (required: {amount_base_units})[/]")
+                                        console.print(f"\n[yellow]Please approve with the correct wallet address: {owner}[/]")
+                                        console.print("[dim]Or update the owner address in the CLI to match the wallet you used.[/]")
+                                        approval_detected = False
+                                        break
+                        except Exception:
+                            # If event filtering fails, continue with normal polling
+                            pass
+                        
+                        # Update status message
+                        status.update(
+                            f"[bold cyan]Waiting for approval... (checking {poll_num + 1}/{max_polls})[/] "
+                            f"[dim]Current allowance: {current_allowance} / {amount_base_units}[/]"
+                        )
+                        
+                        time.sleep(poll_interval)
+                    except KeyboardInterrupt:
+                        status.stop()
+                        console.print("\n[yellow]Polling interrupted by user.[/]")
+                        break
+                    except Exception as e:
+                        # Network errors - continue polling
+                        if poll_num < max_polls - 1:
+                            status.update(
+                                f"[yellow]Network error, retrying... (check {poll_num + 1}/{max_polls})[/]"
+                            )
+                            time.sleep(poll_interval)
+                        else:
+                            status.stop()
+                            console.print(f"\n[yellow]Could not verify approval automatically: {e}[/]")
+                            break
+        except Exception as e:
+            console.print(f"[yellow]Warning:[/] Could not set up approval detection: {e}")
+            console.print("[dim]Falling back to manual confirmation...[/]")
+        
+        # If approval not detected, ask user
+        if not approval_detected:
+            if not Confirm.ask(
+                "\n[bold yellow]Have you completed the approve transaction?[/] (Type 'yes' to continue to Phase 2)",
+                default=False
+            ):
+                console.print("[bold yellow]You can continue with Phase 2 later. The signature will expire in 5 minutes.[/]")
+                raise typer.Exit(code=0)
+
+        # Calculate hotkey bytes32 (keccak256 of SS58 string) - moved before Phase 1 display
         hotkey_bytes = hotkey_ss58.encode("utf-8")
         hotkey_bytes32 = Web3.keccak(hotkey_bytes)
         # Ensure single 0x prefix (hex() doesn't include 0x)
@@ -619,231 +732,66 @@ def prove_lock(
             signature_normalized = signature_normalized[2:]
         elif not signature_normalized.startswith("0x"):
             signature_normalized = "0x" + signature_normalized
-        
+
+        # Step 9: Display Phase 2: Lock Position
+        console.print()
+        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print("[bold]Phase 2: Lock Position[/]")
+        console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
+        console.print()
+        # Verify vault address matches what we expect
+        if lock_tx['to'].lower() != vault.lower():
+            console.print(
+                f"[bold yellow]⚠ Warning:[/] Transaction vault address ({lock_tx['to']}) "
+                f"does not match selected vault ({vault})"
+            )
+        console.print("[bold]Fields for Frontend Lock Page:[/]")
+        console.print()
+        console.print(f"   [yellow]Contract Address (Vault)[/]: {lock_tx['to']}")
         console.print(f"   [yellow]poolId_[/] (bytes32): {pool_id_normalized}")
         console.print(f"   [yellow]amount[/] (uint256): {amount_base_units}")
         console.print(f"   [yellow]lockDays[/] (uint64): {lock_days}")
         console.print(f"   [yellow]hotkey[/] (bytes32): {hotkey_hex}")
         console.print(f"   [yellow]timestamp[/] (uint256): {timestamp}")
         console.print(f"   [yellow]signature[/] (bytes): {signature_normalized}")
+        console.print(f"   [yellow]owner[/] (address): {owner}")
         console.print()
-        console.print("  7. Click [bold]'Write'[/], confirm the  success transaction and copy the transaction hash")
+
+        # Open browser with frontend URL for Phase 2
+        frontend_url = settings.lock_ui_url
+        phase2_params = {
+            "phase": "2",
+            "chainId": str(chain),
+            "vaultAddress": lock_tx['to'],
+            "poolId": pool_id_normalized,
+            "amount": str(amount_base_units),
+            "lockDays": str(lock_days),
+            "hotkey": hotkey_hex,
+            "timestamp": str(timestamp),
+            "signature": signature_normalized,
+            "owner": owner,
+        }
+        phase2_url = f"{frontend_url}?{urlencode(phase2_params)}"
+        console.print(f"\n[bold cyan]Opening lock interface for Phase 2...[/]")
+        console.print(f"URL: [cyan]{phase2_url}[/]")
+        try:
+            webbrowser.open(phase2_url)
+        except Exception as e:
+            console.print(f"[bold yellow]Warning:[/] Could not open browser automatically: {e}")
+            console.print(f"Please manually open: [cyan]{phase2_url}[/]")
         console.print()
 
         console.print(
-            "[dim]The verifier will automatically detect the lock after you execute the transactions.[/]"
+            "[bold green]✓ Lock flow complete![/]"
+        )
+        console.print()
+        console.print(
+            "[dim]The verifier will automatically detect the lock after you execute the transaction.[/]"
         )
         console.print(
-            f"[dim]You can also check status with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
+            f"[dim]You can check your lock status anytime with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
         )
-
-        # Step 9: Optionally poll for status
-        if Confirm.ask(
-            "\n[bold cyan]Poll for lock status after transaction?[/] (Enter transaction hash when ready)",
-            default=False,
-        ):
-            while True:
-                tx_hash = typer.prompt(
-                    "Transaction hash (0x...)", show_default=False
-                )
-                tx_hash_normalized = normalize_hex(tx_hash)
-                if len(tx_hash_normalized) == 66:
-                    break
-                console.print(
-                    "[bold red]Error:[/] Transaction hash must be 32 bytes (0x + 64 hex characters)"
-                )
-
-            console.print()  # Empty line before polling
-            max_polls = 10
-            poll_interval = 5  # seconds
-
-            with Status(
-                "[bold cyan]Polling for lock status...[/]",
-                console=console,
-                spinner="dots",
-            ) as status:
-                for poll_num in range(max_polls):
-                    try:
-                        status.update(
-                            f"[bold cyan]Checking lock status... (attempt {poll_num + 1}/{max_polls})[/]"
-                        )
-                        status_result = get_lock_status(tx_hash=tx_hash_normalized)
-                        if status_result.get("verified"):
-                            status.stop()
-                            console.print("\n[bold green]✓ Lock verified![/]")
-                            console.print(
-                                f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
-                            )
-                            console.print(
-                                f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
-                            )
-                            break
-                        else:
-                            # Check if event was found on-chain but not yet processed
-                            message = status_result.get("message", "")
-                            if "found on-chain but not yet processed" in message.lower():
-                                # Try to trigger immediate processing
-                                try:
-                                    status.update(
-                                        f"[bold cyan]Lock detected on-chain, triggering immediate processing... (attempt {poll_num + 1}/{max_polls})[/]"
-                                    )
-                                    process_result = process_lock_transaction(tx_hash=tx_hash_normalized)
-                                    if process_result.get("success"):
-                                        # Processing succeeded, verify status with a brief retry
-                                        status.update(
-                                            f"[bold cyan]Processing succeeded, verifying status... (attempt {poll_num + 1}/{max_polls})[/]"
-                                        )
-                                        # Give database a moment to commit, then check status
-                                        time.sleep(1.5)  # Slightly longer delay for database commit
-                                        
-                                        # Try checking status up to 3 times with short delays
-                                        verified = False
-                                        status_result = None
-                                        for retry in range(3):
-                                            try:
-                                                status_result = get_lock_status(tx_hash=tx_hash_normalized)
-                                                if status_result.get("verified"):
-                                                    verified = True
-                                                    break
-                                                elif retry < 2:
-                                                    # Brief delay before retry
-                                                    time.sleep(0.5)
-                                            except Exception:
-                                                # If status check fails, continue retrying
-                                                if retry < 2:
-                                                    time.sleep(0.5)
-                                                continue
-                                        
-                                        # Stop polling - processing succeeded
-                                        status.stop()
-                                        
-                                        if verified and status_result:
-                                            # Status check confirmed verification
-                                            console.print("\n[bold green]✓ Lock verified![/]")
-                                            console.print(
-                                                f"[bold cyan]Lock ID:[/] {status_result.get('lockId', 'N/A')}"
-                                            )
-                                            console.print(
-                                                f"[bold cyan]Added to epoch:[/] {status_result.get('addedToEpoch', 'N/A')}"
-                                            )
-                                        else:
-                                            # Processing succeeded but status check didn't confirm yet (timing issue)
-                                            console.print("\n[bold green]✓ Lock processing completed![/]")
-                                            console.print(
-                                                f"[bold cyan]Action:[/] {process_result.get('action', 'processed')}"
-                                            )
-                                            console.print(
-                                                f"[bold cyan]Hotkey:[/] {process_result.get('hotkey', 'N/A')}"
-                                            )
-                                            console.print(
-                                                f"[bold cyan]Slot:[/] {process_result.get('slot', 'N/A')}"
-                                            )
-                                            console.print(
-                                                f"[bold cyan]Epoch:[/] {process_result.get('epoch_version', 'N/A')}"
-                                            )
-                                            console.print(
-                                                "\n[dim]Status check may take a moment to reflect. "
-                                                "You can verify with: [bold]cartha miner status[/][/]"
-                                            )
-                                        break
-                                    else:
-                                        # Processing didn't succeed (e.g., couldn't match to miner)
-                                        if poll_num < max_polls - 1:
-                                            status.update(
-                                                f"[bold cyan]Processing failed, waiting for automatic detection... (attempt {poll_num + 1}/{max_polls})[/]"
-                                            )
-                                            time.sleep(poll_interval)
-                                        else:
-                                            status.stop()
-                                            console.print(
-                                                "\n[yellow]Lock detected on-chain but processing failed.[/]"
-                                            )
-                                            console.print(
-                                                "[dim]The verifier will process it automatically within the next hour.[/]"
-                                            )
-                                            console.print(
-                                                f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
-                                            )
-                                except VerifierError as process_exc:
-                                    # Processing failed, continue polling
-                                    if poll_num < max_polls - 1:
-                                        status.update(
-                                            f"[bold cyan]Processing failed, waiting for automatic detection... (attempt {poll_num + 1}/{max_polls})[/]"
-                                        )
-                                        time.sleep(poll_interval)
-                                    else:
-                                        status.stop()
-                                        console.print(
-                                            "\n[yellow]Lock detected on-chain but processing failed.[/]"
-                                        )
-                                        console.print(
-                                            "[dim]The verifier will process it automatically within the next hour.[/]"
-                                        )
-                                        console.print(
-                                            f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
-                                        )
-                                except Exception as process_exc:
-                                    # Unexpected error, continue polling
-                                    if poll_num < max_polls - 1:
-                                        status.update(
-                                            f"[bold cyan]Waiting for verification... (attempt {poll_num + 1}/{max_polls})[/]"
-                                        )
-                                        time.sleep(poll_interval)
-                                    else:
-                                        status.stop()
-                                        console.print(
-                                            "\n[yellow]Lock detected on-chain but not yet processed by verifier.[/]"
-                                        )
-                                        console.print(
-                                            "[dim]The verifier polls every hour and will process it automatically.[/]"
-                                        )
-                                        console.print(
-                                            f"[dim]You can check status later with: [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey}[/][/]"
-                                        )
-                                # If we didn't break, continue to next iteration
-                                if poll_num < max_polls - 1:
-                                    continue
-                            else:
-                                if poll_num < max_polls - 1:
-                                    status.update(
-                                        f"[bold cyan]Waiting for verification... (attempt {poll_num + 1}/{max_polls})[/]"
-                                    )
-                                    time.sleep(poll_interval)
-                                else:
-                                    status.stop()
-                                    console.print(
-                                        "\n[yellow]Lock not yet verified. The verifier will process it automatically.[/]"
-                                    )
-                                    console.print(
-                                        f"[dim]Message: {message or 'N/A'}[/]"
-                                    )
-                    except VerifierError as exc:
-                        if poll_num < max_polls - 1:
-                            # Truncate long error messages to keep single line clean
-                            error_msg = str(exc)
-                            if len(error_msg) > 50:
-                                error_msg = error_msg[:47] + "..."
-                            status.update(
-                                f"[yellow]Retrying... (attempt {poll_num + 1}/{max_polls})[/] [dim]{error_msg}[/]"
-                            )
-                            time.sleep(poll_interval)
-                        else:
-                            status.stop()
-                            console.print(
-                                f"\n[yellow]Final status check failed: {exc}[/]"
-                            )
-                            console.print(
-                                "[dim]The verifier will process the lock automatically.[/]"
-                            )
-                    except Exception as exc:
-                        status.stop()
-                        console.print(f"\n[yellow]Status check error: {exc}[/]")
-                        console.print(
-                            "[dim]The verifier will process the lock automatically.[/]"
-                        )
-                        break
-
-        console.print("\n[bold green]✓ Lock flow complete![/]")
+        console.print()
 
     except typer.Exit:
         raise

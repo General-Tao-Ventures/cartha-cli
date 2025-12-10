@@ -328,11 +328,12 @@ cartha vault lock \
 2. **Bittensor Authentication**: Signs a challenge message with your hotkey and receives a session token
 3. **Request Signature**: Sends lock parameters to the verifier, which signs an EIP-712 LockRequest
 4. **User Confirmation**: Displays lock details and prompts for confirmation
-5. **Transaction Display**: Shows transaction data for `USDC.approve` and `CarthaVault.lock` to execute in MetaMask
-6. **Status Polling**: Automatically polls the verifier for transaction status until verified
-7. **Auto-Processing**: Verifier automatically detects `LockCreated` events and adds miner to upcoming epoch
+5. **Open Frontend**: Automatically opens the Cartha Lock UI in your browser with pre-filled transaction parameters
+6. **Phase 1 - Approve USDC**: The frontend guides you through approving USDC spending. The CLI automatically detects when approval is complete
+7. **Phase 2 - Lock Position**: The frontend guides you through locking your USDC in the vault contract
+8. **Auto-Processing**: Verifier automatically detects `LockCreated` events and adds miner to upcoming epoch
 
-**Note**: You'll need to execute the `USDC.approve` and `CarthaVault.lock` transactions in MetaMask (or your EVM wallet) using the transaction data displayed by the CLI.
+**Note**: The CLI opens a web interface (Cartha Lock UI) that handles both approval and lock transactions. You'll connect your wallet (MetaMask, Coinbase Wallet, Talisman, or WalletConnect) and execute the transactions directly in the browser. The CLI monitors the approval phase and automatically proceeds when complete.
 
 #### Troubleshooting
 
@@ -587,6 +588,8 @@ The following environment variables can be set to configure the CLI:
 | `CARTHA_VERIFIER_URL` | Verifier endpoint URL | `https://cartha-verifier-826542474079.us-central1.run.app` |
 | `CARTHA_NETWORK` | Bittensor network name | `finney` |
 | `CARTHA_NETUID` | Subnet netuid | `35` |
+| `CARTHA_LOCK_UI_URL` | Cartha Lock UI frontend URL | `https://cartha-lock.vercel.app` |
+| `CARTHA_BASE_SEPOLIA_RPC` | Base Sepolia RPC endpoint for approval detection (optional) | `None` (uses public endpoint) |
 | `CARTHA_EVM_PK` | EVM private key for local signing (optional) | - |
 | `CARTHA_RETRY_MAX_ATTEMPTS` | Maximum number of retry attempts for failed requests | `3` |
 | `CARTHA_RETRY_BACKOFF_FACTOR` | Exponential backoff multiplier between retries | `1.5` |
@@ -683,7 +686,7 @@ export CARTHA_RETRY_BACKOFF_FACTOR=2.0
 
 ### Creating a Lock Position
 
-1. **Request signature and execute transaction:**
+1. **Start the lock flow:**
    ```bash
    cartha vault lock \
      --coldkey my-coldkey \
@@ -696,14 +699,23 @@ export CARTHA_RETRY_BACKOFF_FACTOR=2.0
      --vault-address 0xVaultAddress
    ```
 
-2. **Execute transactions in MetaMask** using the transaction data displayed by the CLI
+2. **The CLI automatically opens the Cartha Lock UI** in your browser with all parameters pre-filled
 
-3. **Wait for auto-detection** - The verifier will automatically detect your `LockCreated` event and add you to the upcoming epoch
+3. **Connect your wallet** (MetaMask, Coinbase Wallet, Talisman, or WalletConnect) - make sure it matches the `--owner-evm` address
 
-**⚠️ Important:** If you request a new signature after already requesting one, make sure to use the **newest signature only**. Using an old signature will lock your funds but won't credit your miner automatically. In this case, open a support ticket on Discord for manual recovery. You'll need to provide:
-- Transaction hash and all lock details
-- Bittensor hotkey signature (via `btcli w sign`)
-- EVM address signature (via MetaMask or Web3 wallet)
+4. **Phase 1 - Approve USDC**: The frontend guides you through approving USDC spending. The CLI automatically detects when approval completes
+
+5. **Phase 2 - Lock Position**: The frontend guides you through locking your USDC in the vault contract
+
+6. **Wait for auto-detection** - The verifier will automatically detect your `LockCreated` event and add you to the upcoming epoch
+
+**⚠️ Important:** 
+- Make sure the wallet you connect in the frontend matches the `--owner-evm` address specified in the CLI
+- The frontend includes wallet validation to prevent using the wrong address
+- If you request a new signature after already requesting one, make sure to use the **newest signature only**. Using an old signature will lock your funds but won't credit your miner automatically. In this case, open a support ticket on Discord for manual recovery. You'll need to provide:
+  - Transaction hash and all lock details
+  - Bittensor hotkey signature (via `btcli w sign`)
+  - EVM address signature (via MetaMask or Web3 wallet)
 
 ### Checking Pool Status and Expiration
 
@@ -730,10 +742,15 @@ export CARTHA_RETRY_BACKOFF_FACTOR=2.0
    cartha miner status --wallet-name cold --wallet-hotkey hot
    ```
 
-2. **Top-ups/extensions happen automatically on-chain** - no CLI action needed!
-   - Make a top-up or extend transaction on the vault contract
+2. **Use the Cartha Lock UI to extend or top up:**
+   - Visit the Cartha Lock UI: https://cartha-lock.vercel.app
+   - Navigate to "My Positions" to view your existing locks
+   - Click "Extend" or "Top Up" buttons for the position you want to modify
+   - Follow the on-screen instructions to complete the transaction
    - The verifier automatically detects `LockUpdated` events
    - Your updated amount/lock_days will be reflected in `miner status` within 30 seconds
+
+**Note**: Extend Lock and Top Up features are currently in testing and may not work properly yet. If you encounter issues, contact support on Discord.
 
 ### Multi-Pool Management
 

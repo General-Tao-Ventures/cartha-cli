@@ -95,8 +95,12 @@ The CLI will:
 1. Check your registration on subnet 35
 2. Authenticate with your Bittensor hotkey
 3. Request a signed LockRequest from the verifier
-4. Display transaction data for you to execute in MetaMask
-5. Poll for lock status until verified
+4. Automatically open the Cartha Lock UI in your browser with all parameters pre-filled
+5. Guide you through Phase 1 (Approve USDC) and Phase 2 (Lock Position) via the web interface
+6. Automatically detect when approval completes and proceed to Phase 2
+7. The verifier automatically detects your lock and adds you to the upcoming epoch
+
+**Managing Positions**: Visit https://cartha-lock.vercel.app to view all your positions, extend locks, or top up existing positions. Extend and Top Up features are currently in testing.
 
 ### View Your Password
 

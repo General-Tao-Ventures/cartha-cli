@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Note: retry_on_status cannot be set via env var easily (would need JSON parsing)
     # For now, it's hardcoded but can be overridden programmatically
     retry_on_status: list[int] = Field(default_factory=lambda: [500, 502, 503, 504])
+    # Frontend lock UI URL
+    lock_ui_url: str = Field(
+        "https://cartha-lock.vercel.app", alias="CARTHA_LOCK_UI_URL"
+    )
 
     model_config = {
         "env_file": ".env",
