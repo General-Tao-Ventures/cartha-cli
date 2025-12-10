@@ -48,7 +48,7 @@ ENV_VAR_DOCS: dict[str, dict[str, Any]] = {
     },
     "CARTHA_LOCK_UI_URL": {
         "description": "URL of the Cartha Lock UI frontend",
-        "default": "https://cartha-lock.vercel.app",
+        "default": "https://cartha.finance",
         "required": False,
     },
 }

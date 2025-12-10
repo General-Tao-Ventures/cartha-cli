@@ -100,7 +100,7 @@ The CLI will:
 6. Automatically detect when approval completes and proceed to Phase 2
 7. The verifier automatically detects your lock and adds you to the upcoming epoch
 
-**Managing Positions**: Visit https://cartha-lock.vercel.app to view all your positions, extend locks, or top up existing positions. Extend and Top Up features are currently in testing.
+**Managing Positions**: Visit https://cartha.finance/manage to view all your positions, extend locks, or top up existing positions.
 
 ### View Your Password
 

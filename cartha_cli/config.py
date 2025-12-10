@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     retry_on_status: list[int] = Field(default_factory=lambda: [500, 502, 503, 504])
     # Frontend lock UI URL
     lock_ui_url: str = Field(
-        "https://cartha-lock.vercel.app", alias="CARTHA_LOCK_UI_URL"
+        "https://cartha.finance", alias="CARTHA_LOCK_UI_URL"
     )
 
     model_config = {

@@ -588,7 +588,7 @@ The following environment variables can be set to configure the CLI:
 | `CARTHA_VERIFIER_URL` | Verifier endpoint URL | `https://cartha-verifier-826542474079.us-central1.run.app` |
 | `CARTHA_NETWORK` | Bittensor network name | `finney` |
 | `CARTHA_NETUID` | Subnet netuid | `35` |
-| `CARTHA_LOCK_UI_URL` | Cartha Lock UI frontend URL | `https://cartha-lock.vercel.app` |
+| `CARTHA_LOCK_UI_URL` | Cartha Lock UI frontend URL | `https://cartha.finance` |
 | `CARTHA_BASE_SEPOLIA_RPC` | Base Sepolia RPC endpoint for approval detection (optional) | `None` (uses public endpoint) |
 | `CARTHA_EVM_PK` | EVM private key for local signing (optional) | - |
 | `CARTHA_RETRY_MAX_ATTEMPTS` | Maximum number of retry attempts for failed requests | `3` |
@@ -743,7 +743,7 @@ export CARTHA_RETRY_BACKOFF_FACTOR=2.0
    ```
 
 2. **Use the Cartha Lock UI to extend or top up:**
-   - Visit the Cartha Lock UI: https://cartha-lock.vercel.app
+   - Visit the Cartha Lock UI: https://cartha.finance/manage
    - Navigate to "My Positions" to view your existing locks
    - Click "Extend" or "Top Up" buttons for the position you want to modify
    - Follow the on-screen instructions to complete the transaction
