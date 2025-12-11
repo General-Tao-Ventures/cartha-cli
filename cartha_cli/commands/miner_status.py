@@ -13,7 +13,7 @@ from rich.table import Table
 from ..config import settings
 from ..display import display_clock_and_countdown
 from ..pair import get_uid_from_hotkey
-from ..utils import format_timestamp
+from ..utils import format_timestamp, format_timestamp_multiline, format_evm_address
 from ..verifier import VerifierError, fetch_miner_status
 from ..wallet import load_wallet
 from .common import (
@@ -218,28 +218,8 @@ def miner_status(
         # Show EVM addresses used (only if single address, otherwise shown in pools table)
         evm_addresses = sanitized.get("miner_evm_addresses")
         if evm_addresses and len(evm_addresses) == 1:
-            table.add_row("EVM address", evm_addresses[0])
+            table.add_row("EVM address", evm_addresses[0])  # Show full address in main status table
 
-    table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
-    issued_at = sanitized.get("issued_at")
-    if issued_at:
-        try:
-            if isinstance(issued_at, (int, float)) or (
-                isinstance(issued_at, str) and issued_at.isdigit()
-            ):
-                formatted_time = format_timestamp(issued_at)
-            elif isinstance(issued_at, str):
-                try:
-                    dt = datetime.fromisoformat(issued_at.replace("Z", "+00:00"))
-                    timestamp = dt.timestamp()
-                    formatted_time = format_timestamp(timestamp)
-                except (ValueError, AttributeError):
-                    formatted_time = issued_at
-            else:
-                formatted_time = str(issued_at)
-            table.add_row("Password issued at", formatted_time)
-        except Exception:
-            table.add_row("Password issued at", str(issued_at))
 
     console.print(table)
 
@@ -252,7 +232,7 @@ def miner_status(
             console.print()
             console.print("[bold cyan]━━━ Active Pools ━━━[/]")
 
-            pool_table = Table(show_header=True, header_style="bold cyan")
+            pool_table = Table(show_header=True, header_style="bold cyan", padding=(0, 1), row_styles=["", "dim"])
             pool_table.add_column("Pool Name", style="cyan", no_wrap=True)
             pool_table.add_column("Amount Locked", style="green", justify="right")
             pool_table.add_column("Lock Days", justify="center")
@@ -260,7 +240,7 @@ def miner_status(
             pool_table.add_column("Status", justify="center")
             pool_table.add_column("EVM Address", style="dim")
 
-            for pool in pools:
+            for idx, pool in enumerate(pools):
                 # Get pool name from verifier response (already converted by verifier)
                 # Display capitalized version
                 pool_name = pool.get("pool_name")
@@ -303,26 +283,27 @@ def miner_status(
                             if exp_dt.tzinfo is None:
                                 exp_dt = exp_dt.replace(tzinfo=UTC)
 
-                            expires_str = format_timestamp(exp_dt.timestamp())
+                            # Format timestamp on multiple lines
+                            expires_str = format_timestamp_multiline(exp_dt.timestamp())
 
                             # Calculate days left
                             now = datetime.now(UTC)
                             time_until_expiry = (exp_dt - now).total_seconds()
                             days_until_expiry = time_until_expiry / 86400
 
-                            # Format days left with color coding
+                            # Format days left with color coding (on separate line)
                             if days_until_expiry < 0:
-                                days_left_str = " [bold red]⚠ EXPIRED[/]"
+                                days_left_str = "\n[bold red]⚠ EXPIRED[/]"
                             elif days_until_expiry <= 7:
                                 days_left_str = (
-                                    f" [bold red]⚠ {int(days_until_expiry)}d left[/]"
+                                    f"\n[bold red]⚠ {int(days_until_expiry)}d left[/]"
                                 )
                             elif days_until_expiry <= 15:
                                 days_left_str = (
-                                    f" [bold yellow]⚠ {int(days_until_expiry)}d left[/]"
+                                    f"\n[bold yellow]⚠ {int(days_until_expiry)}d left[/]"
                                 )
                             else:
-                                days_left_str = f" ({int(days_until_expiry)}d left)"
+                                days_left_str = f"\n({int(days_until_expiry)}d left)"
                     except Exception:
                         expires_str = str(pool_expires_at)
 
@@ -340,13 +321,9 @@ def miner_status(
 
                 status_str = " / ".join(status_parts)
 
-                # EVM address
+                # EVM address - format in standard crypto wallet display
                 evm_addr = pool.get("evm_address", "")
-                evm_display = (
-                    evm_addr
-                    if len(evm_addr) <= 42
-                    else (evm_addr[:20] + "..." + evm_addr[-6:])
-                )
+                evm_display = format_evm_address(evm_addr)
 
                 pool_table.add_row(
                     pool_display,
@@ -356,6 +333,17 @@ def miner_status(
                     status_str,
                     evm_display,
                 )
+                
+                # Add spacing row between pools (except after the last one)
+                if idx < len(pools) - 1:
+                    pool_table.add_row(
+                        "",  # Empty row for visual spacing
+                        "",
+                        "",
+                        "",
+                        "",
+                        "",
+                    )
 
             console.print(pool_table)
 
@@ -372,5 +360,24 @@ def miner_status(
             console.print(
                 "• Multiple pools: Each pool is tracked separately. Expired pools stop earning, others continue."
             )
+        
+        # Link to web interface
+        console.print()
+        console.print("[bold cyan]━━━ Web Interface ━━━[/]")
+        console.print(
+            "[cyan]🌐 View and manage your positions:[/] [bold]https://cartha.finance[/]"
+        )
+        console.print(
+            "[dim]  • View all your lock positions[/]"
+        )
+        console.print(
+            "[dim]  • Extend lock days[/]"
+        )
+        console.print(
+            "[dim]  • Top up existing positions[/]"
+        )
+        console.print(
+            "[dim]  • Claim testnet USDC from faucet[/]"
+        )
 
     return

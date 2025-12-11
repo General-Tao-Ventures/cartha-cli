@@ -79,6 +79,93 @@ def format_timestamp(ts: int | float | str | None) -> str:
             return str(ts)
 
 
+def format_timestamp_multiline(ts: int | float | str | None) -> str:
+    """Format a timestamp showing UTC and local time on separate lines.
+
+    Args:
+        ts: Unix timestamp (seconds) as int, float, or string, or None for current time
+
+    Returns:
+        Formatted string with UTC on first line, local time on second line (if different from UTC),
+        or just UTC if user is in UTC timezone.
+    """
+    if ts is None:
+        ts = time.time()
+    elif isinstance(ts, str):
+        try:
+            ts = float(ts)
+        except ValueError:
+            return str(ts)  # Return as-is if not parseable
+
+    try:
+        ts_float = float(ts)
+        utc_dt = datetime.fromtimestamp(ts_float, tz=UTC)
+
+        # Get local timezone
+        try:
+            local_tz: ZoneInfo = ZoneInfo("local")
+        except Exception:
+            fallback_tz = datetime.now().astimezone().tzinfo
+            if fallback_tz is None:
+                local_tz = ZoneInfo("UTC")
+            else:
+                local_tz = fallback_tz  # type: ignore[assignment]
+
+        local_dt = utc_dt.astimezone(local_tz)
+
+        # Format UTC time
+        utc_str = utc_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+
+        # Check if local timezone is UTC (compare timezone objects, not just hours/minutes)
+        # Also check if the offset is zero (handles cases where timezone name differs but offset is UTC)
+        is_utc_timezone = (
+            str(local_tz) == "UTC" 
+            or local_tz.utcoffset(utc_dt) == timedelta(0)
+            or (hasattr(local_tz, 'key') and local_tz.key == 'UTC')
+        )
+        
+        if is_utc_timezone:
+            # User is in UTC timezone, only show UTC
+            return utc_str
+        else:
+            # Show both UTC and local time on separate lines
+            local_str = local_dt.strftime("%Y-%m-%d %H:%M:%S %Z")
+            return f"{utc_str}\n({local_str})"
+    except (ValueError, OSError, OverflowError):
+        try:
+            return datetime.fromtimestamp(float(ts), tz=UTC).isoformat()
+        except Exception:
+            return str(ts)
+
+
+def format_evm_address(address: str) -> str:
+    """Format an EVM address in standard crypto wallet display format.
+
+    Args:
+        address: EVM address (e.g., "0x86997f52073317659B25aA622C5d93ed77444DeE")
+
+    Returns:
+        Formatted address like "0x8699...44DeE" (first 6 chars after 0x + last 4 chars)
+    """
+    if not address or len(address) < 10:
+        return address
+    
+    # Remove 0x prefix if present for processing
+    if address.startswith("0x"):
+        prefix = "0x"
+        addr_without_prefix = address[2:]
+    else:
+        prefix = ""
+        addr_without_prefix = address
+    
+    if len(addr_without_prefix) <= 10:
+        # Address is too short, return as-is
+        return address
+    
+    # Format: 0x + first 4 chars + ... + last 4 chars
+    return f"{prefix}{addr_without_prefix[:4]}...{addr_without_prefix[-4:]}"
+
+
 def usdc_to_base_units(value: str) -> int:
     """Convert USDC amount string to base units (micro-USDC).
 
