@@ -235,6 +235,7 @@ def miner_status(
             pool_table = Table(show_header=True, header_style="bold cyan", padding=(0, 1), row_styles=["", "dim"])
             pool_table.add_column("Pool Name", style="cyan", no_wrap=True)
             pool_table.add_column("Amount Locked", style="green", justify="right")
+            pool_table.add_column("Pending Amount", style="yellow", justify="right")
             pool_table.add_column("Lock Days", justify="center")
             pool_table.add_column("Expires At", style="yellow")
             pool_table.add_column("Status", justify="center")
@@ -259,6 +260,13 @@ def miner_status(
                 # Format amount locked
                 amount_usdc = pool.get("amount_usdc", 0)
                 amount_str = f"{amount_usdc:.2f}"
+
+                # Format pending amount (top-up that will be active in next epoch)
+                pending_amount_usdc = pool.get("pending_lock_amount_usdc")
+                if pending_amount_usdc is not None and pending_amount_usdc > 0:
+                    pending_str = f"{pending_amount_usdc:.2f} USDC"
+                else:
+                    pending_str = "[dim]-[/]"
 
                 # Format lock days
                 lock_days = pool.get("lock_days", 0)
@@ -328,6 +336,7 @@ def miner_status(
                 pool_table.add_row(
                     pool_display,
                     f"{amount_str} USDC",
+                    pending_str,
                     lock_days_str,
                     expires_str + days_left_str,
                     status_str,
@@ -338,6 +347,7 @@ def miner_status(
                 if idx < len(pools) - 1:
                     pool_table.add_row(
                         "",  # Empty row for visual spacing
+                        "",
                         "",
                         "",
                         "",

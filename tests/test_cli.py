@@ -489,9 +489,7 @@ def test_pair_status_command(monkeypatch):
     assert "Miner Status" in result.stdout
     assert "State" in result.stdout
     assert "active" in result.stdout
-    assert "Password issued" in result.stdout
-    assert "yes" in result.stdout
-    # Password should NOT be shown in miner status (only in miner password)
+    # Password information is not displayed in miner status (security - only shown in miner password command)
     assert "Pair password" not in result.stdout
     assert "0x22" not in result.stdout
 
