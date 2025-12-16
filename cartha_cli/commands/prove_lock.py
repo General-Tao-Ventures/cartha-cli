@@ -31,6 +31,7 @@ from .common import console, exit_with_error, handle_unexpected_exception
 from .shared_options import (
     wallet_name_option,
     wallet_hotkey_option,
+    network_option,
     pool_id_option,
     chain_id_option,
     vault_address_option,
@@ -118,6 +119,7 @@ except ImportError:
 def prove_lock(
     coldkey: str | None = wallet_name_option(required=False),
     hotkey: str | None = wallet_hotkey_option(required=False),
+    network: str = network_option(),
     chain: int | None = chain_id_option(),
     vault: str | None = vault_address_option(),
     pool_id: str | None = pool_id_option(),
@@ -136,6 +138,7 @@ def prove_lock(
     ALIASES:
     --------
     Wallet: --wallet-name, --coldkey, -w  |  --wallet-hotkey, --hotkey, -wh
+    Network: --network, -n (auto-maps: test=netuid 78, finney=netuid 35)
     Pool: --pool-id, --pool, --poolid, -p (accepts names like BTCUSD or hex IDs)
     Amount: --amount, -a  |  Lock days: --lock-days, --days, -d
     Owner: --owner-evm, --owner, --evm, -e
@@ -143,7 +146,7 @@ def prove_lock(
     
     FLOW:
     -----
-    1. Check registration on subnet
+    1. Check registration on subnet (netuid auto-mapped from network)
     2. Authenticate with Bittensor hotkey signature
     3. Check for duplicate positions (rejects early if exists)
     4. Request EIP-712 LockRequest signature from verifier
@@ -152,7 +155,42 @@ def prove_lock(
     7. Verifier automatically processes and adds to upcoming epoch
     """
     try:
-        # Step 1: Collect coldkey and hotkey
+        # Step 1: Determine netuid and verifier URL based on network
+        if network == "test":
+            netuid = 78
+        elif network == "finney":
+            netuid = 35
+            # Warn that mainnet is not live yet
+            console.print()
+            console.print("[bold yellow]⚠️  MAINNET NOT AVAILABLE YET[/]")
+            console.print()
+            console.print("[yellow]Cartha subnet is currently in testnet phase (subnet 78 on test network).[/]")
+            console.print("[yellow]Mainnet (subnet 35 on finney network) has not been announced yet.[/]")
+            console.print()
+            console.print("[bold cyan]To use testnet:[/]")
+            console.print("  cartha vault lock --network test ...")
+            console.print()
+            console.print("[dim]If you continue with finney network, the CLI will attempt to connect[/]")
+            console.print("[dim]but the subnet may not be operational yet.[/]")
+            console.print()
+            if not Confirm.ask("[yellow]Continue with finney network anyway?[/]", default=False):
+                console.print("[yellow]Cancelled. Use --network test for testnet.[/]")
+                raise typer.Exit(code=0)
+        else:
+            # Default to finney settings if unknown network
+            netuid = 35
+        
+        # Auto-map verifier URL based on network (if not explicitly set via env var)
+        from ..config import get_verifier_url_for_network
+        expected_verifier_url = get_verifier_url_for_network(network)
+        if settings.verifier_url != expected_verifier_url:
+            console.print(
+                f"[dim]Using verifier for {network} network: {expected_verifier_url}[/]"
+            )
+            # Update settings for this session
+            settings.verifier_url = expected_verifier_url
+        
+        # Step 2: Collect coldkey and hotkey
         if coldkey is None:
             coldkey = typer.prompt("Coldkey wallet name", default="default")
         if hotkey is None:
@@ -164,23 +202,24 @@ def prove_lock(
 
         console.print(f"\n[bold cyan]Checking registration...[/]")
         console.print(f"[dim]Hotkey:[/] {hotkey_ss58}")
+        console.print(f"[dim]Network:[/] {network} (netuid: {netuid})")
 
-        # Step 2: Check registration via Bittensor network (same as other commands)
+        # Step 3: Check registration via Bittensor network (same as other commands)
         try:
             with console.status(
                 "[bold cyan]Checking miner registration status...[/]",
                 spinner="dots",
             ):
                 uid = get_uid_from_hotkey(
-                    network=settings.network,
-                    netuid=settings.netuid,
+                    network=network,
+                    netuid=netuid,
                     hotkey=hotkey_ss58,
                 )
 
             if uid is None:
                 console.print(
                     "[bold red]Error:[/] Hotkey is not registered or has been deregistered "
-                    f"on netuid {settings.netuid} ({settings.network} network)."
+                    f"on netuid {netuid} ({network} network)."
                 )
                 console.print(
                     "[yellow]Please register your hotkey first using 'cartha miner register'.[/]"
@@ -193,12 +232,12 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Registration check failed", exc)
 
-        # Step 3: Generate Bittensor signature for authentication
+        # Step 4: Generate Bittensor signature for authentication
         console.print(f"\n[bold cyan]Authenticating with Bittensor hotkey...[/]")
         try:
             auth_payload = build_pair_auth_payload(
-                network=settings.network,
-                netuid=settings.netuid,
+                network=network,
+                netuid=netuid,
                 slot=str(uid),
                 hotkey=hotkey_ss58,
                 wallet_name=coldkey,
@@ -209,7 +248,7 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Failed to generate Bittensor signature", exc)
 
-        # Step 4: Verify hotkey and get session token
+        # Step 5: Verify hotkey and get session token
         try:
             auth_result = verify_hotkey(
                 hotkey=hotkey_ss58,
@@ -226,7 +265,7 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Authentication failed", exc)
 
-        # Step 5: Collect lock parameters
+        # Step 6: Collect lock parameters
         console.print(f"\n[bold cyan]Collecting lock parameters...[/]")
 
         # Chain ID - will be auto-detected after pool_id/vault is selected
@@ -277,10 +316,31 @@ def prove_lock(
                         "[bold red]Error:[/] Pool ID must be a recognized pool name or a 66-character hex string (0x...)"
                     )
 
-        # Normalize pool_id
-        if not pool_id.startswith("0x"):
-            pool_id = "0x" + pool_id
-        pool_id = pool_id.lower()
+        # Normalize pool_id - handle both pool names and hex strings
+        else:
+            # Pool ID was provided via command line, check if it's a pool name
+            pool_id_clean = pool_id.strip()
+            pool_id_upper = pool_id_clean.upper()
+            
+            # Check if it's a readable pool name
+            if available_pools and pool_id_upper in available_pools:
+                pool_id = pool_name_to_id(pool_id_upper).lower()
+                console.print(
+                    f"[dim]Converted pool name to ID:[/] {pool_id_upper} → {format_pool_id(pool_id)}"
+                )
+            # Check if it's already a hex string
+            elif pool_id_clean.startswith("0x") and len(pool_id_clean) == 66:
+                pool_id = pool_id_clean.lower()
+            else:
+                # Try to normalize as hex
+                pool_id_normalized = normalize_hex(pool_id_clean).lower()
+                if len(pool_id_normalized) == 66:
+                    pool_id = pool_id_normalized
+                else:
+                    # If not a valid hex and not a known pool name, just normalize it
+                    if not pool_id.startswith("0x"):
+                        pool_id = "0x" + pool_id
+                    pool_id = pool_id.lower()
 
         # Auto-match vault address from pool ID
         if vault is None:
@@ -375,7 +435,16 @@ def prove_lock(
                         console.print("[bold red]Error:[/] Chain ID must be a valid integer")
         else:
             # Chain ID was provided, verify it matches vault if possible
-            expected_chain_id = vault_address_to_chain_id(vault)
+            expected_chain_id = None
+            try:
+                expected_chain_id = vault_address_to_chain_id(vault)
+            except NameError:
+                try:
+                    from testnet.pool_ids import vault_address_to_chain_id
+                    expected_chain_id = vault_address_to_chain_id(vault)
+                except ImportError:
+                    pass
+            
             if expected_chain_id and expected_chain_id != chain:
                 chain_name = "Base Sepolia" if expected_chain_id == 84532 else f"Chain {expected_chain_id}"
                 console.print(
@@ -449,7 +518,7 @@ def prove_lock(
                 exit_with_error("Invalid EVM address format")
             owner = Web3.to_checksum_address(owner)
 
-        # Step 5.5: Check for existing position to avoid wasting user's time
+        # Step 7: Check for existing position to avoid wasting user's time
         console.print(f"\n[bold cyan]Checking for existing positions...[/]")
         try:
             from ..verifier import fetch_miner_status
@@ -500,7 +569,7 @@ def prove_lock(
             )
             console.print("[dim]Continuing anyway...[/]")
 
-        # Step 6: Request EIP-712 LockRequest signature from verifier
+        # Step 8: Request EIP-712 LockRequest signature from verifier
         console.print(f"\n[bold cyan]Requesting signature from verifier...[/]")
         try:
             sig_result = request_lock_signature(
@@ -529,7 +598,7 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Signature request failed", exc)
 
-        # Step 7: Display lock details and get confirmation
+        # Step 9: Display lock details and get confirmation
         console.print(f"\n[bold cyan]Lock Details:[/]")
         summary_table = Table(show_header=False, box=box.SIMPLE)
         summary_table.add_column(style="cyan")
@@ -567,7 +636,7 @@ def prove_lock(
             console.print("[bold yellow]Cancelled.[/]")
             raise typer.Exit(code=0)
 
-        # Step 8: Display transaction data - Phase 1: Approve
+        # Step 10: Display transaction data - Phase 1: Approve
         console.print(f"\n[bold cyan]Transaction Data[/]")
         console.print(
             "\n[bold yellow]⚠️  Execute these transactions to complete your lock:[/]\n"
@@ -769,7 +838,7 @@ def prove_lock(
         elif not signature_normalized.startswith("0x"):
             signature_normalized = "0x" + signature_normalized
 
-        # Step 9: Display Phase 2: Lock Position
+        # Step 11: Display Phase 2: Lock Position
         console.print()
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
         console.print("[bold]Phase 2: Lock Position[/]")

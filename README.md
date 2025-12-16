@@ -86,13 +86,19 @@ cartha vault lock \
   --amount 1000.0 \
   --lock-days 30 \
   --owner-evm 0xYourEVMAddress \
-  --chain-id 8453 \
+  --chain 8453 \
   --vault-address 0xVaultAddress
 # Or use: cartha v lock
 ```
 
+**Parameter Notes:**
+- `--owner` and `--owner-evm` are interchangeable (EVM address that will own the lock)
+- `--vault` and `--vault-address` are interchangeable (vault contract address)
+- `--network` accepts `test` (netuid 78) or `finney` (netuid 35, default)
+- `--chain` or `--chain-id` are interchangeable (EVM chain ID: 84532 for Base Sepolia testnet)
+
 The CLI will:
-1. Check your registration on subnet 35
+1. Check your registration on the specified network (subnet 35 for finney, subnet 78 for test)
 2. Authenticate with your Bittensor hotkey
 3. Request a signed LockRequest from the verifier
 4. Automatically open the Cartha Lock UI in your browser with all parameters pre-filled

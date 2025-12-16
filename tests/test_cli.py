@@ -153,6 +153,9 @@ def test_register_command_success(monkeypatch):
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)  # Auto-confirm
+    # Mock Confirm.ask for mainnet warning prompt
+    from rich.prompt import Confirm
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *args, **kwargs: True)
 
     result = runner.invoke(
         app,
@@ -164,9 +167,7 @@ def test_register_command_success(monkeypatch):
             "--wallet-hotkey",
             "bt1abc",
             "--network",
-            "finney",
-            "--netuid",
-            "35",
+            "test",  # Use test to avoid mainnet confirmation
         ],
     )
     assert result.exit_code == 0
@@ -224,6 +225,9 @@ def test_register_command_already(monkeypatch):
     )
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
+    # Mock Confirm.ask for mainnet warning
+    from rich.prompt import Confirm
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *args, **kwargs: True)
 
     result = runner.invoke(
         app,
@@ -234,6 +238,8 @@ def test_register_command_already(monkeypatch):
             "cold",
             "--wallet-hotkey",
             "bt1abc",
+            "--network",
+            "test",
         ],
     )
     assert result.exit_code == 0
@@ -289,6 +295,10 @@ def test_register_command_failure(monkeypatch):
     monkeypatch.setattr("cartha_cli.bt.get_wallet", fake_get_wallet)
     monkeypatch.setattr("cartha_cli.bt.get_subtensor", fake_get_subtensor)
     monkeypatch.setattr("typer.confirm", lambda *args, **kwargs: True)  # Auto-confirm
+    # Mock Confirm.ask for mainnet warning
+    from rich.prompt import Confirm
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *args, **kwargs: True)
+    
     result = runner.invoke(
         app,
         [
@@ -298,6 +308,8 @@ def test_register_command_failure(monkeypatch):
             "cold",
             "--wallet-hotkey",
             "bt1abc",
+            "--network",
+            "test",
         ],
     )
     assert result.exit_code == 1
@@ -339,6 +351,9 @@ def test_register_command_wallet_error(monkeypatch):
 
     # Patch KeyFileError in the bt module that register imports
     monkeypatch.setattr(register_module.bt, "KeyFileError", _StubKeyFileError)
+    # Mock Confirm.ask for mainnet warning
+    from rich.prompt import Confirm
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *args, **kwargs: True)
 
     result = runner.invoke(
         app,
@@ -349,6 +364,8 @@ def test_register_command_wallet_error(monkeypatch):
             "cold",
             "--wallet-hotkey",
             "bt1abc",
+            "--network",
+            "test",
         ],
     )
     assert result.exit_code == 1
@@ -381,6 +398,9 @@ def test_register_command_trace_unexpected(monkeypatch):
         "subtensor",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
+    # Mock Confirm.ask for mainnet warning
+    from rich.prompt import Confirm
+    monkeypatch.setattr("rich.prompt.Confirm.ask", lambda *args, **kwargs: True)
 
     # default: error handled without traceback
     result = runner.invoke(
@@ -392,6 +412,8 @@ def test_register_command_trace_unexpected(monkeypatch):
             "cold",
             "--wallet-hotkey",
             "bt1abc",
+            "--network",
+            "test",
         ],
     )
     assert result.exit_code == 1
@@ -412,6 +434,8 @@ def test_register_command_trace_unexpected(monkeypatch):
             "cold",
             "--wallet-hotkey",
             "bt1abc",
+            "--network",
+            "test",
         ],
     )
     assert traced.exit_code != 0

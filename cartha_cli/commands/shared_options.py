@@ -156,15 +156,16 @@ def lock_days_option():
 
 
 def network_option():
-    """Network option.
+    """Network option with netuid auto-mapping.
     
     Aliases: --network, -n
+    Maps: test → netuid 78, finney → netuid 35
     """
     return typer.Option(
         settings.network,
         "--network",
         "-n",
-        help="Bittensor network name (alias: -n)"
+        help="Bittensor network (test or finney). Auto-maps to correct netuid (test=78, finney=35)"
     )
 
 
