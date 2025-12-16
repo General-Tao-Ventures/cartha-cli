@@ -70,6 +70,12 @@ def register(
     assert wallet_name is not None  # nosec - enforced by Typer prompt
     assert wallet_hotkey is not None  # nosec - enforced by Typer prompt
 
+    # Auto-map verifier URL based on network
+    from ..config import get_verifier_url_for_network
+    expected_verifier_url = get_verifier_url_for_network(network)
+    if settings.verifier_url != expected_verifier_url:
+        settings.verifier_url = expected_verifier_url
+
     subtensor = None
     try:
         # Initialize subtensor and wallet to get info before registration

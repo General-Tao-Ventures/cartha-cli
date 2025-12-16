@@ -91,6 +91,12 @@ def pair_status(
     ════════════════════════════════════════════════════════════════
     """
     try:
+        # Auto-map verifier URL based on network
+        from ..config import get_verifier_url_for_network
+        expected_verifier_url = get_verifier_url_for_network(network)
+        if settings.verifier_url != expected_verifier_url:
+            settings.verifier_url = expected_verifier_url
+        
         console.print("[bold cyan]Loading wallet...[/]")
         wallet = load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address

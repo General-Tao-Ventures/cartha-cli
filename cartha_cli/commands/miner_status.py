@@ -74,6 +74,12 @@ def miner_status(
     Use 'cartha miner password' to view your password (requires authentication).
     """
     try:
+        # Auto-map verifier URL based on network
+        from ..config import get_verifier_url_for_network
+        expected_verifier_url = get_verifier_url_for_network(network)
+        if settings.verifier_url != expected_verifier_url:
+            settings.verifier_url = expected_verifier_url
+        
         wallet = load_wallet(wallet_name, wallet_hotkey, None)
         hotkey = wallet.hotkey.ss58_address
 

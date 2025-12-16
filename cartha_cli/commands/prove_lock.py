@@ -156,7 +156,7 @@ def prove_lock(
     7. Verifier automatically processes and adds to upcoming epoch
     """
     try:
-        # Step 1: Determine netuid based on network
+        # Step 1: Determine netuid and verifier URL based on network
         if network == "test":
             netuid = 78
         elif network == "finney":
@@ -164,6 +164,16 @@ def prove_lock(
         else:
             # Default to finney settings if unknown network
             netuid = 35
+        
+        # Auto-map verifier URL based on network (if not explicitly set via env var)
+        from ..config import get_verifier_url_for_network
+        expected_verifier_url = get_verifier_url_for_network(network)
+        if settings.verifier_url != expected_verifier_url:
+            console.print(
+                f"[dim]Using verifier for {network} network: {expected_verifier_url}[/]"
+            )
+            # Update settings for this session
+            settings.verifier_url = expected_verifier_url
         
         # Step 2: Collect coldkey and hotkey
         if coldkey is None:

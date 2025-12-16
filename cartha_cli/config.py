@@ -2,11 +2,42 @@
 
 from __future__ import annotations
 
+import os
 from functools import lru_cache
 from typing import Any
 
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+
+# Network to verifier URL mapping
+NETWORK_VERIFIER_MAP = {
+    "test": "https://cartha-verifier-826542474079.us-central1.run.app",
+    "finney": None,  # No mainnet verifier yet - use default or env var
+}
+
+
+def get_verifier_url_for_network(network: str) -> str:
+    """Get the appropriate verifier URL for a given network.
+    
+    Args:
+        network: Network name ("test" or "finney")
+        
+    Returns:
+        Verifier URL for the network
+    """
+    # Check if user set CARTHA_VERIFIER_URL explicitly
+    env_url = os.getenv("CARTHA_VERIFIER_URL")
+    if env_url:
+        return env_url
+    
+    # Auto-map based on network
+    mapped_url = NETWORK_VERIFIER_MAP.get(network)
+    if mapped_url:
+        return mapped_url
+    
+    # Default fallback (testnet for now since no mainnet)
+    return "https://cartha-verifier-826542474079.us-central1.run.app"
 
 
 class Settings(BaseSettings):
