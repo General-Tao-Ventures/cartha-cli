@@ -117,6 +117,8 @@ cartha m status [OPTIONS]
 | `--network` | string | No | Bittensor network name (default: `finney`) |
 | `--netuid` | integer | No | Subnet netuid (default: `35`) |
 | `--json` | flag | No | Emit the raw JSON response |
+| `--refresh` | flag | No | If position not found, manually trigger verifier to process a lock transaction |
+| `--tx-hash` | string | No | Transaction hash to refresh (used with `--refresh`). If not provided, will prompt for input |
 
 #### Examples
 
@@ -140,6 +142,19 @@ cartha miner status \
   --wallet-name cold \
   --wallet-hotkey hot \
   --json
+
+# Manually trigger verifier to process a lock transaction
+cartha miner status \
+  --wallet-name cold \
+  --wallet-hotkey hot \
+  --refresh \
+  --tx-hash 0x1234567890abcdef...
+
+# Refresh without tx-hash (will prompt for it)
+cartha miner status \
+  --wallet-name cold \
+  --wallet-hotkey hot \
+  --refresh
 ```
 
 #### Output
@@ -177,6 +192,7 @@ The command displays:
 - ✅ **Expiration countdown** - See days remaining with color-coded warnings
 - ✅ **Password never displayed** - Security by default
 - ✅ **Auto-fetches UID** - No need to remember your slot UID
+- ✅ **Manual refresh** - Trigger immediate verifier processing if position not found (with `--refresh`)
 
 #### What It Does
 
@@ -185,6 +201,34 @@ The command displays:
 3. Queries the verifier's public `/v1/miner/status` endpoint (no signature required)
 4. Displays comprehensive miner and pool information
 5. Shows expiration warnings for pools expiring soon
+6. **If `--refresh` is used and position not found:**
+   - Prompts for transaction hash (or uses `--tx-hash` if provided)
+   - First checks `GET /lock/status` to see if transaction is already verified
+   - Only if `verified: false`, triggers `POST /lock/process` to manually process the transaction
+   - Re-fetches miner status and displays updated results
+   - This avoids unnecessary on-chain polling if the transaction is already verified
+
+#### Manual Refresh Feature
+
+The `--refresh` flag is useful when:
+- You just created a lock transaction and want immediate processing instead of waiting for the automatic hint watcher (which polls every 30 seconds)
+- The automatic hint watcher missed your transaction for some reason
+- You want to verify that your transaction was successfully processed
+
+**How it works:**
+1. First checks if the transaction is already verified (to avoid unnecessary on-chain polling)
+2. Only triggers manual processing if the transaction hasn't been verified yet
+3. Waits a moment for the database to update
+4. Re-fetches and displays your updated miner status
+
+**Example workflow after creating a lock:**
+```bash
+# Create a lock position
+cartha vault lock --coldkey cold --hotkey hot --pool-id BTCUSD --amount 100 --lock-days 30 --owner-evm 0x... --chain-id 84532 --vault-address 0x...
+
+# If the verifier didn't detect it immediately, manually trigger processing
+cartha miner status --wallet-name cold --wallet-hotkey hot --refresh --tx-hash 0xYourTransactionHash
+```
 
 ---
 

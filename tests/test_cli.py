@@ -1515,3 +1515,242 @@ def test_vault_pools_command_json(monkeypatch):
     assert payload[0]["pool_id"] == "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489"
     assert payload[0]["vault_address"] == "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69"
     assert payload[0]["chain_id"] == 84532
+
+
+def test_miner_status_with_refresh_already_verified(monkeypatch):
+    """Test miner status --refresh when transaction is already verified."""
+    def fake_fetch_miner_status(**kwargs):
+        return {
+            "state": "pending",
+            "has_pwd": False,
+            "issued_at": None,
+            "pools": None,
+        }
+
+    def fake_get_lock_status(**kwargs):
+        return {
+            "verified": True,
+            "lockId": "0xabcd",
+            "addedToEpoch": "2024-12-20",
+        }
+
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.get_lock_status", fake_get_lock_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+
+    result = runner.invoke(
+        app,
+        [
+            "miner",
+            "status",
+            "--slot",
+            "42",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1xyz",
+            "--refresh",
+            "--tx-hash",
+            "0x" + "ab" * 32,
+        ],
+    )
+    
+    assert result.exit_code == 0
+    assert "Transaction is already verified" in result.stdout
+    assert "No need to trigger manual processing" in result.stdout
+
+
+def test_miner_status_with_refresh_not_verified(monkeypatch):
+    """Test miner status --refresh when transaction is not verified yet."""
+    call_count = {"fetch": 0}
+
+    def fake_fetch_miner_status(**kwargs):
+        call_count["fetch"] += 1
+        if call_count["fetch"] == 1:
+            # First call: pending
+            return {
+                "state": "pending",
+                "has_pwd": False,
+                "issued_at": None,
+                "pools": None,
+            }
+        else:
+            # After refresh: active
+            return {
+                "state": "active",
+                "has_pwd": True,
+                "issued_at": "2024-05-20T12:00:00Z",
+                "pools": [
+                    {
+                        "pool_name": "BTCUSD",
+                        "amount_usdc": 250.0,
+                        "lock_days": 30,
+                        "expires_at": "2024-06-20T12:00:00Z",
+                        "is_active": True,
+                        "is_verified": True,
+                        "in_upcoming_epoch": True,
+                        "evm_address": "0x1111111111111111111111111111111111111111",
+                    }
+                ],
+            }
+
+    def fake_get_lock_status(**kwargs):
+        return {
+            "verified": False,
+            "message": "LockCreated event found on-chain but not yet processed by verifier.",
+        }
+
+    def fake_process_lock_transaction(**kwargs):
+        return {
+            "success": True,
+            "action": "processed",
+        }
+
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.get_lock_status", fake_get_lock_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.process_lock_transaction",
+        fake_process_lock_transaction,
+    )
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+
+    result = runner.invoke(
+        app,
+        [
+            "miner",
+            "status",
+            "--slot",
+            "42",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1xyz",
+            "--refresh",
+            "--tx-hash",
+            "0x" + "ab" * 32,
+        ],
+    )
+    
+    assert result.exit_code == 0
+    assert "Triggering manual processing" in result.stdout
+    assert "Processing triggered successfully" in result.stdout
+    assert "Position verified successfully" in result.stdout
+
+
+def test_miner_status_with_refresh_invalid_tx_hash(monkeypatch):
+    """Test miner status --refresh with invalid transaction hash."""
+    def fake_fetch_miner_status(**kwargs):
+        return {
+            "state": "pending",
+            "has_pwd": False,
+            "issued_at": None,
+            "pools": None,
+        }
+
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+
+    result = runner.invoke(
+        app,
+        [
+            "miner",
+            "status",
+            "--slot",
+            "42",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1xyz",
+            "--refresh",
+            "--tx-hash",
+            "0xinvalid",  # Invalid hash (too short)
+        ],
+    )
+    
+    assert result.exit_code == 1
+    assert "Transaction hash must be 66 characters" in result.stdout
