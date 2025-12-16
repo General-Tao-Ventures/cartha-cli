@@ -25,9 +25,22 @@ from ..verifier import (
     process_lock_transaction,
     request_lock_signature,
     verify_hotkey,
+    fetch_miner_status,
 )
 from ..wallet import load_wallet
 from .common import console, exit_with_error, handle_unexpected_exception
+from .shared_options import (
+    wallet_name_option,
+    wallet_hotkey_option,
+    network_option,
+    pool_id_option,
+    chain_id_option,
+    vault_address_option,
+    owner_evm_option,
+    amount_option,
+    lock_days_option,
+    json_output_option,
+)
 
 # Import pool helpers for pool_id conversion
 try:
@@ -105,73 +118,42 @@ except ImportError:
 
 
 def prove_lock(
-    coldkey: str | None = typer.Option(
-        None,
-        "--coldkey",
-        help="Coldkey wallet name (defaults to 'default')",
-        show_default=False,
-    ),
-    hotkey: str | None = typer.Option(
-        None,
-        "--hotkey",
-        help="Hotkey name (defaults to 'default')",
-        show_default=False,
-    ),
-    network: str = typer.Option(
-        settings.network,
-        "--network",
-        help="Bittensor network name (finney or test)."
-    ),
-    chain: int | None = typer.Option(
-        None,
-        "--chain",
-        help="EVM chain ID for the vault transaction.",
-        show_default=False,
-    ),
-    vault: str | None = typer.Option(
-        None,
-        "--vault",
-        "--vault-address",
-        help="Vault contract address.",
-        show_default=False,
-    ),
-    pool_id: str | None = typer.Option(
-        None,
-        "--pool-id",
-        help="Pool ID (readable name or hex string, e.g., 'BTCUSD' or '0x...')",
-        show_default=False,
-    ),
-    amount: str | None = typer.Option(
-        None,
-        "--amount",
-        help="Lock amount in USDC (e.g. 250.5). Auto-detects if normalized USDC or base units (>1e9).",
-        show_default=False,
-    ),
-    lock_days: int | None = typer.Option(
-        None,
-        "--lock-days",
-        help="Lock duration in days (e.g., 365)",
-        show_default=False,
-    ),
-    owner: str | None = typer.Option(
-        None,
-        "--owner",
-        "--owner-evm",
-        help="EVM address that will own the lock position (defaults to prompting)",
-        show_default=False,
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit responses as JSON."
-    ),
+    coldkey: str | None = wallet_name_option(required=False),
+    hotkey: str | None = wallet_hotkey_option(required=False),
+    network: str = network_option(),
+    chain: int | None = chain_id_option(),
+    vault: str | None = vault_address_option(),
+    pool_id: str | None = pool_id_option(),
+    amount: str | None = amount_option(),
+    lock_days: int | None = lock_days_option(),
+    owner: str | None = owner_evm_option(),
+    json_output: bool = json_output_option(),
 ) -> None:
     """Create a new lock position with verifier-signed EIP-712 LockRequest.
     
-    Flow:
-    1. Check registration on subnet 35
+    USAGE:
+    ------
+    Interactive mode (recommended): Just run 'cartha vault lock' and follow prompts
+    With arguments: Provide flags to skip prompts (e.g., -w cold -wh hot -p BTCUSD -a 100 -d 30 -e 0xEVM...)
+    
+    ALIASES:
+    --------
+    Wallet: --wallet-name, --coldkey, -w  |  --wallet-hotkey, --hotkey, -wh
+    Pool: --pool-id, --pool, --poolid, -p (accepts names like BTCUSD or hex IDs)
+    Amount: --amount, -a  |  Lock days: --lock-days, --days, -d
+    Owner: --owner-evm, --owner, --evm, -e
+    Network: --network, -n (auto-maps: test=netuid 78, finney=netuid 35)
+    Chain/Vault: auto-detected from pool (can override with --chain-id, --vault-address)
+    
+    FLOW:
+    -----
+    1. Check registration on subnet (netuid auto-mapped from network)
     2. Authenticate with Bittensor hotkey signature
-    3. Request EIP-712 LockRequest signature from verifier
-    4. Display transaction data for user to execute in MetaMask
-    5. Poll for lock status until verified
+    3. Check for duplicate positions (rejects early if exists)
+    4. Request EIP-712 LockRequest signature from verifier
+    5. Open Cartha Lock UI for approval and lock transactions
+    6. Auto-detect transaction completion
+    7. Verifier automatically processes and adds to upcoming epoch
     """
     try:
         # Step 1: Determine netuid based on network
@@ -510,6 +492,55 @@ def prove_lock(
             if not Web3.is_address(owner):
                 exit_with_error("Invalid EVM address format")
             owner = Web3.to_checksum_address(owner)
+
+        # Step 6: Check for existing position to avoid wasting user's time
+        console.print(f"\n[bold cyan]Checking for existing positions...[/]")
+        try:
+            existing_status = fetch_miner_status(hotkey=hotkey_ss58, slot=str(uid))
+            
+            # Check if position already exists with same pool + EVM
+            if existing_status.get("pools"):
+                for pool in existing_status["pools"]:
+                    pool_id_existing = pool.get("pool_id", "").lower()
+                    evm_existing = pool.get("evm_address", "").lower()
+                    
+                    if pool_id_existing == pool_id.lower() and evm_existing == owner.lower():
+                        # Found duplicate!
+                        pool_name_display = pool.get("pool_name", "").upper() or "Pool"
+                        console.print(
+                            f"\n[bold red]Error: Position already exists![/]\n"
+                        )
+                        console.print(
+                            f"[yellow]You already have a lock position on {pool_name_display} with this EVM address:[/]"
+                        )
+                        console.print(f"  • Amount: [bold]{pool.get('amount_usdc', 0):.2f} USDC[/]")
+                        console.print(f"  • Lock days: [bold]{pool.get('lock_days', 0)}[/]")
+                        console.print(f"  • EVM: [dim]{pool.get('evm_address')}[/]")
+                        
+                        expires_at = pool.get('expires_at')
+                        if expires_at:
+                            console.print(f"  • Expires: [bold]{expires_at}[/]")
+                        
+                        console.print()
+                        console.print(
+                            f"[bold cyan]To add more USDC or extend your lock period:[/]\n"
+                            f"  Visit: [bold]https://cartha.finance/manage[/]"
+                        )
+                        console.print()
+                        console.print(
+                            f"[dim]Note: You can create a new position on the same pool using a different EVM address.[/]"
+                        )
+                        raise typer.Exit(code=1)
+            
+            console.print("[dim]✓ No existing position found - proceeding...[/]")
+        except typer.Exit:
+            raise
+        except Exception as check_exc:
+            # If status check fails, log warning but continue (don't block users if verifier is down)
+            console.print(
+                f"[yellow]Warning: Could not check existing positions ({check_exc})[/]"
+            )
+            console.print("[dim]Continuing anyway...[/]")
 
         # Step 7: Request EIP-712 LockRequest signature from verifier
         console.print(f"\n[bold cyan]Requesting signature from verifier...[/]")

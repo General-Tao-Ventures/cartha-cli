@@ -16,13 +16,22 @@ from ..pair import (
     build_pair_auth_payload,
     get_uid_from_hotkey,
 )
-from ..utils import format_timestamp
+from ..utils import format_timestamp, format_timestamp_multiline, format_evm_address
 from ..verifier import VerifierError, fetch_pair_status
 from ..wallet import load_wallet
 from .common import (
     console,
     handle_unexpected_exception,
     handle_wallet_exception,
+)
+from .shared_options import (
+    wallet_name_option,
+    wallet_hotkey_option,
+    slot_option,
+    auto_fetch_uid_option,
+    network_option,
+    netuid_option,
+    json_output_option,
 )
 
 # Import pool name helper
@@ -44,42 +53,27 @@ except ImportError:
 
 
 def pair_status(
-    wallet_name: str = typer.Option(
-        ...,
-        "--wallet-name",
-        "--wallet.name",
-        prompt="Coldkey wallet name",
-        help="Coldkey wallet name used for signing.",
-        show_default=False,
-    ),
-    wallet_hotkey: str = typer.Option(
-        ...,
-        "--wallet-hotkey",
-        "--wallet.hotkey",
-        prompt="Hotkey name",
-        help="Hotkey name used for signing.",
-        show_default=False,
-    ),
-    slot: int | None = typer.Option(
-        None,
-        "--slot",
-        help="Subnet UID assigned to the miner. If not provided, will prompt for input.",
-        show_default=False,
-    ),
-    auto_fetch_uid: bool = typer.Option(
-        True,
-        "--auto-fetch-uid/--no-auto-fetch-uid",
-        help="Automatically fetch UID from Bittensor network (default: enabled). Use --no-auto-fetch-uid to prompt for UID.",
-    ),
-    network: str = typer.Option(
-        settings.network, "--network", help="Bittensor network name."
-    ),
-    netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit the raw JSON response."
-    ),
+    wallet_name: str = wallet_name_option(required=True),
+    wallet_hotkey: str = wallet_hotkey_option(required=True),
+    slot: int | None = slot_option(),
+    auto_fetch_uid: bool = auto_fetch_uid_option(),
+    network: str = network_option(),
+    netuid: int = netuid_option(),
+    json_output: bool = json_output_option(),
 ) -> None:
-    """Show the verifier state for a miner pair.
+    """Show the verifier state for a miner pair (legacy - use 'cartha miner status' instead).
+
+    USAGE:
+    ------
+    Interactive mode: 'cartha pair status' (will prompt for wallet)
+    With arguments: 'cartha pair status -w cold -wh hot'
+    
+    ALIASES:
+    --------
+    Wallet: --wallet-name, --coldkey, -w  |  --wallet-hotkey, --hotkey, -wh
+    Slot: --slot, --uid, -u  |  Network: --network, -n
+
+    DEPRECATED: Use 'cartha miner status' instead for faster status checks without authentication.
 
     State Legend:
     ════════════════════════════════════════════════════════════════
@@ -260,10 +254,18 @@ def pair_status(
     # Show lock amounts for verified/active states
     state = sanitized.get("state", "").lower()
     if state in ("verified", "active"):
-        # Show EVM addresses used (only if single address, otherwise shown in pools table)
+        # Show EVM addresses used - display all addresses
         evm_addresses = sanitized.get("miner_evm_addresses")
-        if evm_addresses and len(evm_addresses) == 1:
-            table.add_row("EVM address", evm_addresses[0])
+        if evm_addresses:
+            if len(evm_addresses) == 1:
+                table.add_row("EVM Address", evm_addresses[0])
+            elif len(evm_addresses) <= 3:
+                # Show up to 3 addresses with line breaks
+                evm_display = "\n".join(evm_addresses)
+                table.add_row("EVM Addresses", evm_display)
+            else:
+                # Show count for many addresses
+                table.add_row("EVM Addresses", f"{len(evm_addresses)} addresses (see pool details below)")
 
     table.add_row("Password issued", "yes" if sanitized.get("has_pwd") else "no")
     issued_at = sanitized.get("issued_at")
