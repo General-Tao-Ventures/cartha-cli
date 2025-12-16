@@ -1754,3 +1754,91 @@ def test_miner_status_with_refresh_invalid_tx_hash(monkeypatch):
     
     assert result.exit_code == 1
     assert "Transaction hash must be 66 characters" in result.stdout
+
+
+def test_miner_status_displays_multiple_evms(monkeypatch):
+    """Test that miner status displays multiple EVM addresses correctly."""
+    def fake_fetch_miner_status(**kwargs):
+        return {
+            "state": "active",
+            "has_pwd": True,
+            "issued_at": "2024-05-20T12:00:00Z",
+            "miner_evm_addresses": [
+                "0x1111111111111111111111111111111111111111",
+                "0x2222222222222222222222222222222222222222",
+            ],
+            "pools": [
+                {
+                    "pool_name": "BTCUSD",
+                    "amount_usdc": 1000.0,
+                    "lock_days": 30,
+                    "expires_at": "2024-06-20T12:00:00Z",
+                    "is_active": True,
+                    "is_verified": True,
+                    "in_upcoming_epoch": True,
+                    "evm_address": "0x1111111111111111111111111111111111111111",
+                },
+                {
+                    "pool_name": "BTCUSD",
+                    "amount_usdc": 2000.0,
+                    "lock_days": 60,
+                    "expires_at": "2024-07-20T12:00:00Z",
+                    "is_active": True,
+                    "is_verified": True,
+                    "in_upcoming_epoch": True,
+                    "evm_address": "0x2222222222222222222222222222222222222222",
+                },
+            ],
+        }
+
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+
+    result = runner.invoke(
+        app,
+        [
+            "miner",
+            "status",
+            "--slot",
+            "42",
+            "--wallet-name",
+            "cold",
+            "--wallet-hotkey",
+            "bt1xyz",
+        ],
+    )
+    
+    assert result.exit_code == 0
+    assert "Miner Status" in result.stdout
+    assert "EVM Addresses" in result.stdout  # Should show "EVM Addresses" (plural)
+    assert "BTCUSD" in result.stdout
+    # Should show both positions in the pools table
+    assert "1000.0" in result.stdout or "1000.00" in result.stdout
+    assert "2000.0" in result.stdout or "2000.00" in result.stdout

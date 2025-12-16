@@ -330,10 +330,18 @@ def miner_status(
     # Show lock amounts for verified/active states
     state = sanitized.get("state", "").lower()
     if state in ("verified", "active"):
-        # Show EVM addresses used (only if single address, otherwise shown in pools table)
+        # Show EVM addresses used - display all addresses
         evm_addresses = sanitized.get("miner_evm_addresses")
-        if evm_addresses and len(evm_addresses) == 1:
-            table.add_row("EVM address", evm_addresses[0])  # Show full address in main status table
+        if evm_addresses:
+            if len(evm_addresses) == 1:
+                table.add_row("EVM Address", evm_addresses[0])
+            elif len(evm_addresses) <= 3:
+                # Show up to 3 addresses with line breaks
+                evm_display = "\n".join(evm_addresses)
+                table.add_row("EVM Addresses", evm_display)
+            else:
+                # Show count for many addresses
+                table.add_row("EVM Addresses", f"{len(evm_addresses)} addresses (see pool details below)")
 
 
     console.print(table)

@@ -464,6 +464,57 @@ def prove_lock(
                 exit_with_error("Invalid EVM address format")
             owner = Web3.to_checksum_address(owner)
 
+        # Step 5.5: Check for existing position to avoid wasting user's time
+        console.print(f"\n[bold cyan]Checking for existing positions...[/]")
+        try:
+            from ..verifier import fetch_miner_status
+            
+            existing_status = fetch_miner_status(hotkey=hotkey_ss58, slot=str(uid))
+            
+            # Check if position already exists with same pool + EVM
+            if existing_status.get("pools"):
+                for pool in existing_status["pools"]:
+                    pool_id_existing = pool.get("pool_id", "").lower()
+                    evm_existing = pool.get("evm_address", "").lower()
+                    
+                    if pool_id_existing == pool_id.lower() and evm_existing == owner.lower():
+                        # Found duplicate!
+                        pool_name_display = pool.get("pool_name", "").upper() or "Pool"
+                        console.print(
+                            f"\n[bold red]Error: Position already exists![/]\n"
+                        )
+                        console.print(
+                            f"[yellow]You already have a lock position on {pool_name_display} with this EVM address:[/]"
+                        )
+                        console.print(f"  • Amount: [bold]{pool.get('amount_usdc', 0):.2f} USDC[/]")
+                        console.print(f"  • Lock days: [bold]{pool.get('lock_days', 0)}[/]")
+                        console.print(f"  • EVM: [dim]{pool.get('evm_address')}[/]")
+                        
+                        expires_at = pool.get('expires_at')
+                        if expires_at:
+                            console.print(f"  • Expires: [bold]{expires_at}[/]")
+                        
+                        console.print()
+                        console.print(
+                            f"[bold cyan]To add more USDC or extend your lock period:[/]\n"
+                            f"  Visit: [bold]https://cartha.finance/manage[/]"
+                        )
+                        console.print()
+                        console.print(
+                            f"[dim]Note: You can create a new position on the same pool using a different EVM address.[/]"
+                        )
+                        raise typer.Exit(code=1)
+            
+            console.print("[dim]✓ No existing position found - proceeding...[/]")
+        except typer.Exit:
+            raise
+        except Exception as check_exc:
+            # If status check fails, log warning but continue (don't block users if verifier is down)
+            console.print(
+                f"[yellow]Warning: Could not check existing positions ({check_exc})[/]"
+            )
+            console.print("[dim]Continuing anyway...[/]")
+
         # Step 6: Request EIP-712 LockRequest signature from verifier
         console.print(f"\n[bold cyan]Requesting signature from verifier...[/]")
         try:
