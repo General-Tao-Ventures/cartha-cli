@@ -117,6 +117,11 @@ def prove_lock(
         help="Hotkey name (defaults to 'default')",
         show_default=False,
     ),
+    network: str = typer.Option(
+        settings.network,
+        "--network",
+        help="Bittensor network name (finney or test)."
+    ),
     chain: int | None = typer.Option(
         None,
         "--chain",
@@ -126,6 +131,7 @@ def prove_lock(
     vault: str | None = typer.Option(
         None,
         "--vault",
+        "--vault-address",
         help="Vault contract address.",
         show_default=False,
     ),
@@ -150,6 +156,7 @@ def prove_lock(
     owner: str | None = typer.Option(
         None,
         "--owner",
+        "--owner-evm",
         help="EVM address that will own the lock position (defaults to prompting)",
         show_default=False,
     ),
@@ -167,7 +174,16 @@ def prove_lock(
     5. Poll for lock status until verified
     """
     try:
-        # Step 1: Collect coldkey and hotkey
+        # Step 1: Determine netuid based on network
+        if network == "test":
+            netuid = 78
+        elif network == "finney":
+            netuid = 35
+        else:
+            # Default to finney settings if unknown network
+            netuid = 35
+        
+        # Step 2: Collect coldkey and hotkey
         if coldkey is None:
             coldkey = typer.prompt("Coldkey wallet name", default="default")
         if hotkey is None:
@@ -179,23 +195,24 @@ def prove_lock(
 
         console.print(f"\n[bold cyan]Checking registration...[/]")
         console.print(f"[dim]Hotkey:[/] {hotkey_ss58}")
+        console.print(f"[dim]Network:[/] {network} (netuid: {netuid})")
 
-        # Step 2: Check registration via Bittensor network (same as other commands)
+        # Step 3: Check registration via Bittensor network (same as other commands)
         try:
             with console.status(
                 "[bold cyan]Checking miner registration status...[/]",
                 spinner="dots",
             ):
                 uid = get_uid_from_hotkey(
-                    network=settings.network,
-                    netuid=settings.netuid,
+                    network=network,
+                    netuid=netuid,
                     hotkey=hotkey_ss58,
                 )
 
             if uid is None:
                 console.print(
                     "[bold red]Error:[/] Hotkey is not registered or has been deregistered "
-                    f"on netuid {settings.netuid} ({settings.network} network)."
+                    f"on netuid {netuid} ({network} network)."
                 )
                 console.print(
                     "[yellow]Please register your hotkey first using 'cartha miner register'.[/]"
@@ -208,12 +225,12 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Registration check failed", exc)
 
-        # Step 3: Generate Bittensor signature for authentication
+        # Step 4: Generate Bittensor signature for authentication
         console.print(f"\n[bold cyan]Authenticating with Bittensor hotkey...[/]")
         try:
             auth_payload = build_pair_auth_payload(
-                network=settings.network,
-                netuid=settings.netuid,
+                network=network,
+                netuid=netuid,
                 slot=str(uid),
                 hotkey=hotkey_ss58,
                 wallet_name=coldkey,
@@ -224,7 +241,7 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Failed to generate Bittensor signature", exc)
 
-        # Step 4: Verify hotkey and get session token
+        # Step 5: Verify hotkey and get session token
         try:
             auth_result = verify_hotkey(
                 hotkey=hotkey_ss58,
@@ -241,7 +258,7 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Authentication failed", exc)
 
-        # Step 5: Collect lock parameters
+        # Step 6: Collect lock parameters
         console.print(f"\n[bold cyan]Collecting lock parameters...[/]")
 
         # Chain ID - will be auto-detected after pool_id/vault is selected
@@ -292,10 +309,31 @@ def prove_lock(
                         "[bold red]Error:[/] Pool ID must be a recognized pool name or a 66-character hex string (0x...)"
                     )
 
-        # Normalize pool_id
-        if not pool_id.startswith("0x"):
-            pool_id = "0x" + pool_id
-        pool_id = pool_id.lower()
+        # Normalize pool_id - handle both pool names and hex strings
+        else:
+            # Pool ID was provided via command line, check if it's a pool name
+            pool_id_clean = pool_id.strip()
+            pool_id_upper = pool_id_clean.upper()
+            
+            # Check if it's a readable pool name
+            if available_pools and pool_id_upper in available_pools:
+                pool_id = pool_name_to_id(pool_id_upper).lower()
+                console.print(
+                    f"[dim]Converted pool name to ID:[/] {pool_id_upper} → {format_pool_id(pool_id)}"
+                )
+            # Check if it's already a hex string
+            elif pool_id_clean.startswith("0x") and len(pool_id_clean) == 66:
+                pool_id = pool_id_clean.lower()
+            else:
+                # Try to normalize as hex
+                pool_id_normalized = normalize_hex(pool_id_clean).lower()
+                if len(pool_id_normalized) == 66:
+                    pool_id = pool_id_normalized
+                else:
+                    # If not a valid hex and not a known pool name, just normalize it
+                    if not pool_id.startswith("0x"):
+                        pool_id = "0x" + pool_id
+                    pool_id = pool_id.lower()
 
         # Auto-match vault address from pool ID
         if vault is None:
@@ -390,7 +428,16 @@ def prove_lock(
                         console.print("[bold red]Error:[/] Chain ID must be a valid integer")
         else:
             # Chain ID was provided, verify it matches vault if possible
-            expected_chain_id = vault_address_to_chain_id(vault)
+            expected_chain_id = None
+            try:
+                expected_chain_id = vault_address_to_chain_id(vault)
+            except NameError:
+                try:
+                    from testnet.pool_ids import vault_address_to_chain_id
+                    expected_chain_id = vault_address_to_chain_id(vault)
+                except ImportError:
+                    pass
+            
             if expected_chain_id and expected_chain_id != chain:
                 chain_name = "Base Sepolia" if expected_chain_id == 84532 else f"Chain {expected_chain_id}"
                 console.print(
@@ -464,7 +511,7 @@ def prove_lock(
                 exit_with_error("Invalid EVM address format")
             owner = Web3.to_checksum_address(owner)
 
-        # Step 6: Request EIP-712 LockRequest signature from verifier
+        # Step 7: Request EIP-712 LockRequest signature from verifier
         console.print(f"\n[bold cyan]Requesting signature from verifier...[/]")
         try:
             sig_result = request_lock_signature(
@@ -493,7 +540,7 @@ def prove_lock(
         except Exception as exc:
             handle_unexpected_exception("Signature request failed", exc)
 
-        # Step 7: Display lock details and get confirmation
+        # Step 8: Display lock details and get confirmation
         console.print(f"\n[bold cyan]Lock Details:[/]")
         summary_table = Table(show_header=False, box=box.SIMPLE)
         summary_table.add_column(style="cyan")
@@ -531,7 +578,7 @@ def prove_lock(
             console.print("[bold yellow]Cancelled.[/]")
             raise typer.Exit(code=0)
 
-        # Step 8: Display transaction data - Phase 1: Approve
+        # Step 9: Display transaction data - Phase 1: Approve
         console.print(f"\n[bold cyan]Transaction Data[/]")
         console.print(
             "\n[bold yellow]⚠️  Execute these transactions to complete your lock:[/]\n"
@@ -733,7 +780,7 @@ def prove_lock(
         elif not signature_normalized.startswith("0x"):
             signature_normalized = "0x" + signature_normalized
 
-        # Step 9: Display Phase 2: Lock Position
+        # Step 10: Display Phase 2: Lock Position
         console.print()
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
         console.print("[bold]Phase 2: Lock Position[/]")
