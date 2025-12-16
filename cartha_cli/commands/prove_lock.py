@@ -1162,6 +1162,11 @@ def prove_lock(
                         f"  • Frontend: [bold]{frontend_url}/manage[/]"
                     )
                     console.print()
+                    console.print("[dim]If the verifier doesn't detect your position automatically, you can manually trigger processing later:[/]")
+                    console.print(
+                        f"  [bold]cartha miner status --wallet-name {coldkey} --wallet-hotkey {hotkey} --refresh --tx-hash {tx_hash_normalized}[/]"
+                    )
+                    console.print()
 
     except typer.Exit:
         raise
