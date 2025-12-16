@@ -2,19 +2,21 @@
 
 from __future__ import annotations
 
+import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import bittensor as bt
 import typer
 from rich.json import JSON
+from rich.status import Status
 from rich.table import Table
 
 from ..config import settings
 from ..display import display_clock_and_countdown
 from ..pair import get_uid_from_hotkey
-from ..utils import format_timestamp, format_timestamp_multiline, format_evm_address
-from ..verifier import VerifierError, fetch_miner_status
+from ..utils import format_timestamp, format_timestamp_multiline, format_evm_address, normalize_hex
+from ..verifier import VerifierError, fetch_miner_status, get_lock_status, process_lock_transaction
 from ..wallet import load_wallet
 from .common import (
     console,
@@ -62,11 +64,25 @@ def miner_status(
     json_output: bool = typer.Option(
         False, "--json", help="Emit the raw JSON response."
     ),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="If position not found, manually trigger verifier to process a lock transaction.",
+    ),
+    tx_hash: str | None = typer.Option(
+        None,
+        "--tx-hash",
+        help="Transaction hash to refresh (used with --refresh). If not provided, will prompt for input.",
+    ),
 ) -> None:
     """Show miner status and pool information (password not displayed).
 
     This command shows your miner's status, active pools, and lock information
     without displaying the password. Use 'cartha miner password' to view your password.
+    
+    If your position is not found and you recently created a lock transaction, use --refresh
+    to manually trigger the verifier to process it immediately instead of waiting for the
+    automatic hint watcher (which polls every 30 seconds).
     """
     try:
         wallet = load_wallet(wallet_name, wallet_hotkey, None)
@@ -188,6 +204,105 @@ def miner_status(
             raise typer.Exit(code=1) from exc
 
         handle_unexpected_exception("Unable to fetch miner status", exc)
+
+    # Handle --refresh flag: manually trigger verifier if position not found
+    state = status.get("state", "").lower()
+    if refresh and state not in ("verified", "active"):
+        console.print()
+        console.print("[yellow]Position not found or not verified yet.[/]")
+        console.print("[dim]Using --refresh to manually trigger verifier processing...[/]\n")
+        
+        # Prompt for tx_hash if not provided
+        tx_hash_normalized = None
+        if tx_hash:
+            tx_hash_normalized = normalize_hex(tx_hash)
+            if len(tx_hash_normalized) != 66:
+                console.print(
+                    "[bold red]Error:[/] Transaction hash must be 66 characters (0x + 64 hex chars)"
+                )
+                raise typer.Exit(code=1)
+        else:
+            while True:
+                tx_input = typer.prompt(
+                    "Transaction hash of your lock transaction (0x...)",
+                    show_default=False,
+                )
+                tx_hash_normalized = normalize_hex(tx_input)
+                if len(tx_hash_normalized) == 66:
+                    break
+                console.print(
+                    "[bold red]Error:[/] Transaction hash must be 66 characters (0x + 64 hex chars)"
+                )
+        
+        try:
+            # Step 1: Check if already verified (to avoid unnecessary on-chain polling)
+            console.print(f"[dim]Checking transaction status: {tx_hash_normalized}[/]\n")
+            with Status(
+                "[bold cyan]Checking lock status...[/]",
+                console=console,
+                spinner="dots",
+            ) as status_spinner:
+                lock_status_result = get_lock_status(tx_hash=tx_hash_normalized)
+            
+            is_verified = lock_status_result.get("verified", False)
+            
+            if is_verified:
+                console.print("[bold green]✓ Transaction is already verified![/]")
+                console.print("[dim]No need to trigger manual processing.[/]\n")
+            else:
+                # Step 2: Only trigger manual processing if not verified
+                message = lock_status_result.get("message", "")
+                console.print(f"[yellow]Status:[/] {message}\n")
+                console.print("[bold cyan]Triggering manual processing...[/]")
+                
+                with Status(
+                    "[bold cyan]Processing transaction...[/]",
+                    console=console,
+                    spinner="dots",
+                ) as process_spinner:
+                    process_result = process_lock_transaction(tx_hash=tx_hash_normalized)
+                
+                if process_result.get("success"):
+                    console.print("[bold green]✓ Processing triggered successfully![/]\n")
+                else:
+                    console.print("[yellow]Processing triggered but result unclear.[/]\n")
+            
+            # Step 3: Wait a moment for database to update
+            console.print("[dim]Waiting for verifier to update...[/]")
+            time.sleep(2)
+            
+            # Step 4: Re-fetch miner status
+            console.print("[dim]Re-fetching miner status...[/]\n")
+            with Status(
+                "[bold cyan]Fetching updated status...[/]",
+                console=console,
+                spinner="dots",
+            ):
+                status = fetch_miner_status(
+                    hotkey=hotkey,
+                    slot=slot_id,
+                )
+            
+            # Check if status improved
+            new_state = status.get("state", "").lower()
+            if new_state in ("verified", "active"):
+                console.print("[bold green]✓ Position verified successfully![/]\n")
+            else:
+                console.print(
+                    "[yellow]Position not yet verified.[/] "
+                    "[dim]The verifier will continue processing automatically.[/]\n"
+                )
+        
+        except VerifierError as refresh_exc:
+            console.print(f"[bold red]Refresh failed:[/] {refresh_exc}")
+            console.print(
+                "[dim]Continuing to display current status...[/]\n"
+            )
+        except Exception as refresh_exc:
+            console.print(f"[bold red]Error during refresh:[/] {refresh_exc}")
+            console.print(
+                "[dim]Continuing to display current status...[/]\n"
+            )
 
     sanitized = dict(status)
     sanitized.setdefault("state", "unknown")
