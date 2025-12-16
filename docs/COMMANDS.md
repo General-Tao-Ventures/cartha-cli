@@ -165,11 +165,13 @@ The command displays:
   - Hotkey address
   - Slot UID
   - State (active, verified, pending, unknown)
-  - EVM address(es) used for locking
-  - Password issued status (yes/no)
-  - Password issued timestamp (if applicable)
+  - EVM Addresses - Shows all EVM addresses used across your positions:
+    - Single address: Shows full address
+    - 2-3 addresses: Shows all addresses (one per line)
+    - 4+ addresses: Shows count (e.g., "4 addresses") - see pool details below for individual addresses
 
 - **Active Pools Table** (if pools exist):
+  - **Each row represents one lock position**
   - Pool name (human-readable, e.g., "EURUSD", "BTCUSDC")
   - Amount locked (USDC)
   - Lock days
@@ -177,7 +179,8 @@ The command displays:
     - ⚠ Red warning if < 7 days remaining
     - ⚠ Yellow warning if < 15 days remaining
   - Status (Active / In Next Epoch)
-  - EVM address used for that pool
+  - EVM address used for that specific position
+  - **Note**: Multiple rows may show the same Pool ID if you have positions using different EVM addresses
 
 - **Reminders:**
   - Lock expiration behavior
@@ -378,6 +381,8 @@ cartha vault lock \
 8. **Auto-Processing**: Verifier automatically detects `LockCreated` events and adds miner to upcoming epoch
 
 **Note**: The CLI opens a web interface (Cartha Lock UI) that handles both approval and lock transactions. You'll connect your wallet (MetaMask, Coinbase Wallet, Talisman, or WalletConnect) and execute the transactions directly in the browser. The CLI monitors the approval phase and automatically proceeds when complete.
+
+**Multiple Positions**: You can create multiple lock positions on the same pool by using different EVM addresses. Each position is tracked separately with its own amount, lock period, and expiration. However, if you try to create a second lock on the same pool with the same EVM address, it will be rejected. Use the top-up feature at https://cartha.finance/manage to add more USDC to an existing position or extend its lock period.
 
 #### Troubleshooting
 
