@@ -28,6 +28,17 @@ from ..verifier import (
 )
 from ..wallet import load_wallet
 from .common import console, exit_with_error, handle_unexpected_exception
+from .shared_options import (
+    wallet_name_option,
+    wallet_hotkey_option,
+    pool_id_option,
+    chain_id_option,
+    vault_address_option,
+    owner_evm_option,
+    amount_option,
+    lock_days_option,
+    json_output_option,
+)
 
 # Import pool helpers for pool_id conversion
 try:
@@ -105,66 +116,40 @@ except ImportError:
 
 
 def prove_lock(
-    coldkey: str | None = typer.Option(
-        None,
-        "--coldkey",
-        help="Coldkey wallet name (defaults to 'default')",
-        show_default=False,
-    ),
-    hotkey: str | None = typer.Option(
-        None,
-        "--hotkey",
-        help="Hotkey name (defaults to 'default')",
-        show_default=False,
-    ),
-    chain: int | None = typer.Option(
-        None,
-        "--chain",
-        help="EVM chain ID for the vault transaction.",
-        show_default=False,
-    ),
-    vault: str | None = typer.Option(
-        None,
-        "--vault",
-        help="Vault contract address.",
-        show_default=False,
-    ),
-    pool_id: str | None = typer.Option(
-        None,
-        "--pool-id",
-        help="Pool ID (readable name or hex string, e.g., 'BTCUSD' or '0x...')",
-        show_default=False,
-    ),
-    amount: str | None = typer.Option(
-        None,
-        "--amount",
-        help="Lock amount in USDC (e.g. 250.5). Auto-detects if normalized USDC or base units (>1e9).",
-        show_default=False,
-    ),
-    lock_days: int | None = typer.Option(
-        None,
-        "--lock-days",
-        help="Lock duration in days (e.g., 365)",
-        show_default=False,
-    ),
-    owner: str | None = typer.Option(
-        None,
-        "--owner",
-        help="EVM address that will own the lock position (defaults to prompting)",
-        show_default=False,
-    ),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit responses as JSON."
-    ),
+    coldkey: str | None = wallet_name_option(required=False),
+    hotkey: str | None = wallet_hotkey_option(required=False),
+    chain: int | None = chain_id_option(),
+    vault: str | None = vault_address_option(),
+    pool_id: str | None = pool_id_option(),
+    amount: str | None = amount_option(),
+    lock_days: int | None = lock_days_option(),
+    owner: str | None = owner_evm_option(),
+    json_output: bool = json_output_option(),
 ) -> None:
     """Create a new lock position with verifier-signed EIP-712 LockRequest.
     
-    Flow:
-    1. Check registration on subnet 35
+    USAGE:
+    ------
+    Interactive mode (recommended): Just run 'cartha vault lock' and follow prompts
+    With arguments: Provide flags to skip prompts (e.g., -w cold -wh hot -p BTCUSD -a 100 -d 30 -e 0xEVM...)
+    
+    ALIASES:
+    --------
+    Wallet: --wallet-name, --coldkey, -w  |  --wallet-hotkey, --hotkey, -wh
+    Pool: --pool-id, --pool, --poolid, -p (accepts names like BTCUSD or hex IDs)
+    Amount: --amount, -a  |  Lock days: --lock-days, --days, -d
+    Owner: --owner-evm, --owner, --evm, -e
+    Chain/Vault: auto-detected from pool (can override with --chain-id, --vault-address)
+    
+    FLOW:
+    -----
+    1. Check registration on subnet
     2. Authenticate with Bittensor hotkey signature
-    3. Request EIP-712 LockRequest signature from verifier
-    4. Display transaction data for user to execute in MetaMask
-    5. Poll for lock status until verified
+    3. Check for duplicate positions (rejects early if exists)
+    4. Request EIP-712 LockRequest signature from verifier
+    5. Open Cartha Lock UI for approval and lock transactions
+    6. Auto-detect transaction completion
+    7. Verifier automatically processes and adds to upcoming epoch
     """
     try:
         # Step 1: Collect coldkey and hotkey

@@ -21,46 +21,30 @@ from .common import (
     handle_unexpected_exception,
     handle_wallet_exception,
 )
+from .shared_options import (
+    wallet_name_option,
+    wallet_hotkey_option,
+    slot_option,
+    auto_fetch_uid_option,
+    network_option,
+    netuid_option,
+    json_output_option,
+)
 
 
 def miner_password(
-    wallet_name: str = typer.Option(
-        ...,
-        "--wallet-name",
-        "--wallet.name",
-        prompt="Coldkey wallet name",
-        help="Coldkey wallet name used for signing.",
-        show_default=False,
-    ),
-    wallet_hotkey: str = typer.Option(
-        ...,
-        "--wallet-hotkey",
-        "--wallet.hotkey",
-        prompt="Hotkey name",
-        help="Hotkey name used for signing.",
-        show_default=False,
-    ),
-    slot: int | None = typer.Option(
-        None,
-        "--slot",
-        help="Subnet UID assigned to the miner. If not provided, will prompt for input.",
-        show_default=False,
-    ),
-    auto_fetch_uid: bool = typer.Option(
-        True,
-        "--auto-fetch-uid/--no-auto-fetch-uid",
-        help="Automatically fetch UID from Bittensor network (default: enabled).",
-        show_default=False,
-    ),
-    network: str = typer.Option(
-        settings.network, "--network", help="Bittensor network name."
-    ),
-    netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit the raw JSON response."
-    ),
+    wallet_name: str = wallet_name_option(required=True),
+    wallet_hotkey: str = wallet_hotkey_option(required=True),
+    slot: int | None = slot_option(),
+    auto_fetch_uid: bool = auto_fetch_uid_option(),
+    network: str = network_option(),
+    netuid: int = netuid_option(),
+    json_output: bool = json_output_option(),
 ) -> None:
     """DEPRECATED: View your existing miner password (requires authentication).
+
+    All arguments are optional - the CLI will prompt for wallet name and hotkey if not provided.
+    Multiple aliases available: use --wallet-name or --coldkey, --wallet-hotkey or --hotkey, -w, -wh, etc.
 
     ⚠️  This command is deprecated. The new lock flow uses session tokens instead of passwords.
     Passwords were only used in the old LockProof flow, which has been replaced.

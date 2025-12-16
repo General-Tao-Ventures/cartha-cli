@@ -21,29 +21,19 @@ from .common import (
     handle_unexpected_exception,
     handle_wallet_exception,
 )
+from .shared_options import (
+    wallet_name_option,
+    wallet_hotkey_option,
+    network_option,
+    netuid_option,
+)
 
 
 def register(
-    network: str = typer.Option(
-        settings.network, "--network", help="Bittensor network name."
-    ),
-    wallet_name: str = typer.Option(
-        None,
-        "--wallet-name",
-        "--wallet.name",
-        prompt="Coldkey wallet name",
-        help="Coldkey wallet name.",
-        show_default=False,
-    ),
-    wallet_hotkey: str = typer.Option(
-        None,
-        "--wallet-hotkey",
-        "--wallet.hotkey",
-        prompt="Hotkey name",
-        help="Hotkey name.",
-        show_default=False,
-    ),
-    netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
+    wallet_name: str | None = wallet_name_option(required=False),
+    wallet_hotkey: str | None = wallet_hotkey_option(required=False),
+    network: str = network_option(),
+    netuid: int = netuid_option(),
     burned: bool = typer.Option(
         True,
         "--burned/--pow",
@@ -53,10 +43,28 @@ def register(
         False, "--cuda", help="Enable CUDA for PoW registration."
     ),
 ) -> None:
-    """Register the specified hotkey on the target subnet and print the UID.
+    """Register your hotkey on the Cartha subnet (subnet 35 on finney, subnet 78 on testnet).
+    
+    USAGE:
+    ------
+    Interactive mode (recommended): 'cartha miner register' (will prompt for wallet)
+    With arguments: 'cartha miner register -w cold -wh hot'
+    
+    ALIASES:
+    --------
+    Wallet: --wallet-name, --coldkey, -w  |  --wallet-hotkey, --hotkey, -wh
+    Network: --network, -n
+    
+    REGISTRATION OPTIONS:
+    ---------------------
+    --burned (default): Register using burned TAO
+    --pow: Register using Proof of Work
+    --cuda: Enable CUDA for PoW registration
+    
+    After registration, use 'cartha vault lock' to create lock positions.
     
     ⚠️  Note: Password generation is no longer supported. The new lock flow uses 
-    session tokens instead of passwords. Use 'cartha vault lock' to create lock positions.
+    session tokens instead of passwords.
     """
 
     assert wallet_name is not None  # nosec - enforced by Typer prompt

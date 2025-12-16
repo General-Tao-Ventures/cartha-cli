@@ -43,42 +43,50 @@ Register a hotkey on the Cartha subnet and obtain your pair password.
 
 #### Usage
 
+**Interactive mode (recommended - will prompt for wallet):**
+
+```bash
+cartha miner register
+# or
+cartha m register
+```
+
+**With arguments (skip prompts):**
+
 ```bash
 cartha miner register [OPTIONS]
 # or
 cartha m register [OPTIONS]
 ```
 
-#### Options
+#### Options (All Optional - Will Prompt if Not Provided)
 
-| Option | Type | Required | Description |
+| Option | Aliases | Type | Description |
 | --- | --- | --- | --- |
-| `--wallet-name`, `--wallet.name` | string | Yes | Coldkey wallet name |
-| `--wallet-hotkey`, `--wallet.hotkey` | string | Yes | Hotkey name within the wallet |
-| `--network` | string | No | Bittensor network name (default: `finney`) |
-| `--netuid` | integer | No | Subnet netuid (default: `35`) |
-| `--pow` | flag | No | Use PoW registration instead of burned registration |
-| `--cuda` | flag | No | Enable CUDA for PoW registration |
+| `--wallet-name` | `--wallet.name`, `--coldkey`, `-w` | string | Coldkey wallet name |
+| `--wallet-hotkey` | `--wallet.hotkey`, `--hotkey`, `-wh` | string | Hotkey name within the wallet |
+| `--network` | `-n` | string | Bittensor network name (default: `finney`) |
+| `--netuid` | *(none)* | integer | Subnet netuid (default: `35`) |
+| `--pow` | *(none)* | flag | Use PoW registration instead of burned registration |
+| `--cuda` | *(none)* | flag | Enable CUDA for PoW registration |
 
 #### Examples
 
 ```bash
-# Register with burned TAO (default)
-cartha miner register \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --network finney \
-  --netuid 35
+# Interactive mode (recommended)
+cartha miner register
+
+# With short aliases
+cartha m register -w cold -wh hot
+
+# Using --coldkey/--hotkey aliases
+cartha miner register --coldkey cold --hotkey hot
 
 # Register with PoW
-cartha miner register \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --pow \
-  --cuda
+cartha miner register -w cold -wh hot --pow --cuda
 
-# Using short alias
-cartha m register --wallet-name cold --wallet-hotkey hot
+# Specify network explicitly
+cartha miner register -w cold -wh hot -n finney --netuid 35
 ```
 
 #### What It Does
@@ -106,55 +114,50 @@ cartha miner status [OPTIONS]
 cartha m status [OPTIONS]
 ```
 
-#### Options
+#### Options (All Optional - Will Prompt if Not Provided)
 
-| Option | Type | Required | Description |
+| Option | Aliases | Type | Description |
 | --- | --- | --- | --- |
-| `--wallet-name`, `--wallet.name` | string | Yes | Coldkey wallet name |
-| `--wallet-hotkey`, `--wallet.hotkey` | string | Yes | Hotkey name within the wallet |
-| `--slot` | integer | No | Subnet UID assigned to the miner (auto-fetched if not provided) |
-| `--auto-fetch-uid` | flag | No | Automatically fetch UID from Bittensor network (default: enabled) |
-| `--network` | string | No | Bittensor network name (default: `finney`) |
-| `--netuid` | integer | No | Subnet netuid (default: `35`) |
-| `--json` | flag | No | Emit the raw JSON response |
-| `--refresh` | flag | No | If position not found, manually trigger verifier to process a lock transaction |
-| `--tx-hash` | string | No | Transaction hash to refresh (used with `--refresh`). If not provided, will prompt for input |
+| `--wallet-name` | `--wallet.name`, `--coldkey`, `-w` | string | Coldkey wallet name |
+| `--wallet-hotkey` | `--wallet.hotkey`, `--hotkey`, `-wh` | string | Hotkey name within the wallet |
+| `--slot` | `--uid`, `-u` | integer | Subnet UID assigned to the miner (auto-fetched if not provided) |
+| `--auto-fetch-uid` | *(none)* | flag | Automatically fetch UID from Bittensor network (default: enabled) |
+| `--network` | `-n` | string | Bittensor network name (default: `finney`) |
+| `--netuid` | *(none)* | integer | Subnet netuid (default: `35`) |
+| `--json` | *(none)* | flag | Emit the raw JSON response |
+| `--refresh` | *(none)* | flag | If position not found, manually trigger verifier to process a lock transaction |
+| `--tx-hash` | `--tx`, `--transaction` | string | Transaction hash to refresh (used with `--refresh`). If not provided, will prompt for input |
 
 #### Examples
 
 ```bash
-# Quick status check (no authentication, auto-fetches UID)
-cartha miner status \
-  --wallet-name cold \
-  --wallet-hotkey hot
+# Interactive mode (recommended)
+cartha miner status
 
-# Using short alias
-cartha m status --wallet-name cold --wallet-hotkey hot
+# Quick status check with aliases
+cartha m status -w cold -wh hot
 
-# With explicit slot UID
-cartha miner status \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --slot 123
+# Using --coldkey/--hotkey aliases
+cartha miner status --coldkey cold --hotkey hot
+
+# Using full names
+cartha miner status --wallet-name cold --wallet-hotkey hot
+
+# With explicit slot UID (skip auto-fetch)
+cartha miner status -w cold -wh hot -u 123
 
 # JSON output
-cartha miner status \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --json
+cartha miner status -w cold -wh hot --json
 
 # Manually trigger verifier to process a lock transaction
+cartha miner status -w cold -wh hot --refresh --tx 0x1234...
+
+# Refresh with full names
 cartha miner status \
   --wallet-name cold \
   --wallet-hotkey hot \
   --refresh \
   --tx-hash 0x1234567890abcdef...
-
-# Refresh without tx-hash (will prompt for it)
-cartha miner status \
-  --wallet-name cold \
-  --wallet-hotkey hot \
-  --refresh
 ```
 
 #### Output
@@ -311,62 +314,77 @@ Create a new lock position by interacting with the Cartha Verifier. This command
 
 #### Usage
 
+**Interactive mode (recommended - will prompt for all inputs):**
+
+```bash
+cartha vault lock
+# or
+cartha v lock
+```
+
+**With arguments (skip prompts):**
+
 ```bash
 cartha vault lock [OPTIONS]
 # or
 cartha v lock [OPTIONS]
 ```
 
-#### Options
+#### Options (All Optional - Will Prompt if Not Provided)
 
-| Option | Type | Required | Description |
+| Option | Aliases | Type | Description |
 | --- | --- | --- | --- |
-| `--coldkey`, `-c` | string | Yes | Coldkey wallet name |
-| `--hotkey`, `-h` | string | Yes | Hotkey name within the wallet |
-| `--pool-id` | string | Yes | Pool ID (readable name like 'BTCUSD' or hex string like '0x...') |
-| `--amount` | string | Yes | Amount of USDC to lock (e.g., '100.0') |
-| `--lock-days` | integer | Yes | Number of days to lock (7-365) |
-| `--owner-evm` | string | Yes | EVM address that will own the lock position |
-| `--chain-id` | integer | Yes | EVM chain ID where the vault is deployed |
-| `--vault-address` | string | Yes | CarthaVault contract address |
-| `--json` | flag | No | Emit responses as JSON |
+| `--wallet-name` | `--wallet.name`, `--coldkey`, `-w` | string | Coldkey wallet name |
+| `--wallet-hotkey` | `--wallet.hotkey`, `--hotkey`, `-wh` | string | Hotkey name within the wallet |
+| `--pool-id` | `--pool`, `--poolid`, `-p` | string | Pool name (BTCUSD, ETHUSD) or hex ID (0x...) |
+| `--amount` | `-a` | string | Amount of USDC to lock (e.g., '100.0') |
+| `--lock-days` | `--days`, `-d` | integer | Number of days to lock (7-365) |
+| `--owner-evm` | `--owner`, `--evm-address`, `--evm`, `-e` | string | EVM address that will own the lock position |
+| `--chain-id` | `--chain`, `--chainid` | integer | EVM chain ID (auto-detected from pool) |
+| `--vault-address` | `--vault` | string | CarthaVault contract address (auto-detected from pool) |
+| `--json` | *(none)* | flag | Emit responses as JSON |
 
 #### Examples
 
 ```bash
-# Basic usage
-cartha vault lock \
-  --coldkey my-coldkey \
-  --hotkey my-hotkey \
-  --pool-id BTCUSD \
-  --amount 100.0 \
-  --lock-days 30 \
-  --owner-evm 0x1234567890123456789012345678901234567890 \
-  --chain-id 8453 \
-  --vault-address 0xabcdef1234567890abcdef1234567890abcdef12
+# Interactive mode (recommended for beginners)
+cartha vault lock
 
-# Using short alias
-cartha v lock \
-  -c my-coldkey \
-  -h my-hotkey \
-  --pool-id ETH/USDC \
-  --amount 250.5 \
-  --lock-days 365 \
-  --owner-evm 0xEVM... \
-  --chain-id 8453 \
-  --vault-address 0xVAULT...
+# The CLI will prompt you for:
+# - Coldkey wallet name
+# - Hotkey name
+# - Pool (just type: BTCUSD, ETHUSD, etc.)
+# - Amount in USDC
+# - Lock days
+# - EVM address
 
-# JSON output mode
+# Short aliases (for power users)
+cartha v lock -w cold -wh hot -p BTCUSD -a 100 -d 30 -e 0xYourEVM...
+
+# Full argument names
 cartha vault lock \
-  --coldkey my-coldkey \
-  --hotkey my-hotkey \
-  --pool-id BTCUSD \
+  --wallet-name cold \
+  --wallet-hotkey hot \
+  --pool BTCUSD \
   --amount 100.0 \
+  --days 30 \
+  --owner-evm 0xYourEVM...
+
+# Using --coldkey/--hotkey aliases (also works)
+cartha vault lock \
+  --coldkey cold \
+  --hotkey hot \
+  --pool-id BTCUSD \
+  --amount 100 \
   --lock-days 30 \
-  --owner-evm 0xEVM... \
-  --chain-id 8453 \
-  --vault-address 0xVAULT... \
-  --json
+  --owner 0xYourEVM...
+
+# Chain and vault auto-detected from pool (no need to specify)
+# But you can override if needed:
+cartha vault lock \
+  -w cold -wh hot -p BTCUSD -a 100 -d 30 -e 0xEVM... \
+  --chain-id 84532 \
+  --vault 0xVaultAddress...
 ```
 
 #### What It Does
