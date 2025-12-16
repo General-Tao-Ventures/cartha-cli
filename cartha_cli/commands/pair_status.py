@@ -91,7 +91,20 @@ def pair_status(
     ════════════════════════════════════════════════════════════════
     """
     try:
-        # Auto-map verifier URL based on network
+        # Auto-map netuid and verifier URL based on network
+        if network == "test":
+            netuid = 78
+        elif network == "finney":
+            netuid = 35
+            # Warn that mainnet is not live yet
+            console.print()
+            console.print("[bold yellow]⚠️  MAINNET NOT AVAILABLE YET[/]")
+            console.print("[yellow]Cartha subnet is currently in testnet phase (subnet 78).[/]")
+            console.print("[yellow]Mainnet (subnet 35) has not been announced yet.[/]")
+            console.print("[dim]Use --network test to access testnet.[/]")
+            console.print()
+        # Note: netuid parameter is kept for backwards compatibility / explicit override
+        
         from ..config import get_verifier_url_for_network
         expected_verifier_url = get_verifier_url_for_network(network)
         if settings.verifier_url != expected_verifier_url:
