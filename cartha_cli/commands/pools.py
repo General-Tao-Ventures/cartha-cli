@@ -48,9 +48,21 @@ def pools(
         False, "--json", help="Emit responses as JSON."
     ),
 ) -> None:
-    """Show current available pools.
+    """Show all available pools with their names, IDs, vault addresses, and chain IDs.
     
-    Displays all available pools with their pool IDs, vault addresses, and chain IDs.
+    USAGE:
+    ------
+    cartha vault pools (or: cartha v pools)
+    cartha vault pools --json (for JSON output)
+    
+    OUTPUT:
+    -------
+    - Pool names: BTCUSD, ETHUSD, EURUSD, etc.
+    - Pool IDs: Full hex identifiers (0x...)
+    - Vault addresses: Contract addresses for each pool
+    - Chain IDs: Which blockchain network (e.g., 84532 for Base Sepolia)
+    
+    Use these pool names directly in 'cartha vault lock -p BTCUSD ...'
     """
     try:
         available_pools = list_pools()

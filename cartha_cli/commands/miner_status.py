@@ -23,66 +23,55 @@ from .common import (
     handle_unexpected_exception,
     handle_wallet_exception,
 )
+from .shared_options import (
+    wallet_name_option,
+    wallet_hotkey_option,
+    slot_option,
+    auto_fetch_uid_option,
+    network_option,
+    netuid_option,
+    json_output_option,
+    tx_hash_option,
+    refresh_option,
+)
 
 # Note: CLI does NOT convert pool_id to pool_name - verifier handles that
 # CLI just displays the pool_name from verifier response (capitalized)
 
 
 def miner_status(
-    wallet_name: str = typer.Option(
-        ...,
-        "--wallet-name",
-        "--wallet.name",
-        prompt="Coldkey wallet name",
-        help="Coldkey wallet name.",
-        show_default=False,
-    ),
-    wallet_hotkey: str = typer.Option(
-        ...,
-        "--wallet-hotkey",
-        "--wallet.hotkey",
-        prompt="Hotkey name",
-        help="Hotkey name.",
-        show_default=False,
-    ),
-    slot: int | None = typer.Option(
-        None,
-        "--slot",
-        help="Subnet UID assigned to the miner. If not provided, will prompt for input.",
-        show_default=False,
-    ),
-    auto_fetch_uid: bool = typer.Option(
-        True,
-        "--auto-fetch-uid/--no-auto-fetch-uid",
-        help="Automatically fetch UID from Bittensor network (default: enabled).",
-        show_default=False,
-    ),
-    network: str = typer.Option(
-        settings.network, "--network", help="Bittensor network name."
-    ),
-    netuid: int = typer.Option(settings.netuid, "--netuid", help="Subnet netuid."),
-    json_output: bool = typer.Option(
-        False, "--json", help="Emit the raw JSON response."
-    ),
-    refresh: bool = typer.Option(
-        False,
-        "--refresh",
-        help="If position not found, manually trigger verifier to process a lock transaction.",
-    ),
-    tx_hash: str | None = typer.Option(
-        None,
-        "--tx-hash",
-        help="Transaction hash to refresh (used with --refresh). If not provided, will prompt for input.",
-    ),
+    wallet_name: str = wallet_name_option(required=True),
+    wallet_hotkey: str = wallet_hotkey_option(required=True),
+    slot: int | None = slot_option(),
+    auto_fetch_uid: bool = auto_fetch_uid_option(),
+    network: str = network_option(),
+    netuid: int = netuid_option(),
+    json_output: bool = json_output_option(),
+    refresh: bool = refresh_option(),
+    tx_hash: str | None = tx_hash_option(),
 ) -> None:
-    """Show miner status and pool information (password not displayed).
+    """Show miner status and pool information (no authentication required).
 
-    This command shows your miner's status, active pools, and lock information
-    without displaying the password. Use 'cartha miner password' to view your password.
+    USAGE:
+    ------
+    Interactive mode: 'cartha miner status' (will prompt for wallet)
+    With arguments: 'cartha miner status -w cold -wh hot'
     
-    If your position is not found and you recently created a lock transaction, use --refresh
-    to manually trigger the verifier to process it immediately instead of waiting for the
-    automatic hint watcher (which polls every 30 seconds).
+    ALIASES:
+    --------
+    Wallet: --wallet-name, --coldkey, -w  |  --wallet-hotkey, --hotkey, -wh
+    Slot: --slot, --uid, -u  |  Network: --network, -n
+    TX: --tx-hash, --tx, --transaction (for --refresh)
+    
+    FEATURES:
+    ---------
+    - Shows all your lock positions across pools and EVM addresses
+    - No password required (public endpoint)
+    - Auto-fetches your UID from Bittensor network
+    - Use --refresh to manually trigger lock processing (if verifier hasn't detected it yet)
+    - Displays expiration warnings for positions expiring soon
+    
+    Use 'cartha miner password' to view your password (requires authentication).
     """
     try:
         wallet = load_wallet(wallet_name, wallet_hotkey, None)

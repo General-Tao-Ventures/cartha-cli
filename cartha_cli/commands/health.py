@@ -25,7 +25,20 @@ def health_check(
 ) -> None:
     """Check CLI health: verifier connectivity, Bittensor network, and configuration.
     
-    This command verifies that all components needed for the CLI are working correctly.
+    USAGE:
+    ------
+    cartha utils health (or: cartha u health)
+    cartha utils health --verbose (or: -v)
+    
+    CHECKS:
+    -------
+    1. Verifier connectivity and response time
+    2. Bittensor network connectivity
+    3. Configuration validation
+    4. Subnet metadata (slots, tempo, block)
+    5. Environment variables status
+    
+    Use this to diagnose issues before running other commands.
     """
     checks_passed = 0
     checks_failed = 0

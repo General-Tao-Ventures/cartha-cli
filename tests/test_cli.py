@@ -1842,3 +1842,121 @@ def test_miner_status_displays_multiple_evms(monkeypatch):
     # Should show both positions in the pools table
     assert "1000.0" in result.stdout or "1000.00" in result.stdout
     assert "2000.0" in result.stdout or "2000.00" in result.stdout
+
+
+def test_miner_status_coldkey_alias(monkeypatch):
+    """Test that --coldkey alias works for miner status."""
+    def fake_fetch_miner_status(**kwargs):
+        return {
+            "state": "pending",
+            "has_pwd": False,
+            "issued_at": None,
+            "pools": None,
+        }
+
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+
+    # Test with --coldkey and --hotkey aliases
+    result = runner.invoke(
+        app,
+        [
+            "miner",
+            "status",
+            "--coldkey",  # Alias for --wallet-name
+            "cold",
+            "--hotkey",  # Alias for --wallet-hotkey
+            "bt1xyz",
+            "--slot",
+            "42",
+        ],
+    )
+    
+    assert result.exit_code == 0
+    assert "Miner Status" in result.stdout
+
+
+def test_miner_status_short_aliases(monkeypatch):
+    """Test that short aliases (-w, -wh) work for miner status."""
+    def fake_fetch_miner_status(**kwargs):
+        return {
+            "state": "pending",
+            "has_pwd": False,
+            "issued_at": None,
+            "pools": None,
+        }
+
+    class DummyWallet:
+        def __init__(self, ss58: str) -> None:
+            self.hotkey = type("Hotkey", (), {"ss58_address": ss58})()
+
+    import bittensor as bt
+
+    monkeypatch.setattr(bt, "wallet", lambda *args, **kwargs: DummyWallet("bt1xyz"))
+    monkeypatch.setattr(
+        bt,
+        "subtensor",
+        lambda *args, **kwargs: type(
+            "Subtensor",
+            (),
+            {
+                "metagraph": lambda netuid: type(
+                    "Metagraph", (), {"hotkeys": ["bt1xyz"] * 100}
+                )()
+            },
+        )(),
+    )
+
+    monkeypatch.setattr(
+        "cartha_cli.commands.miner_status.fetch_miner_status", fake_fetch_miner_status
+    )
+    monkeypatch.setattr(
+        "cartha_cli.wallet.load_wallet",
+        lambda wallet_name, wallet_hotkey, expected: DummyWallet("bt1xyz"),
+    )
+    monkeypatch.setattr("cartha_cli.pair.get_uid_from_hotkey", lambda **kwargs: 42)
+
+    # Test with -w and -wh short aliases
+    result = runner.invoke(
+        app,
+        [
+            "miner",
+            "status",
+            "-w",  # Short for --wallet-name
+            "cold",
+            "-wh",  # Short for --wallet-hotkey
+            "bt1xyz",
+            "-u",  # Short for --slot/--uid
+            "42",
+        ],
+    )
+    
+    assert result.exit_code == 0
+    assert "Miner Status" in result.stdout
