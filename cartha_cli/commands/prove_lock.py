@@ -11,6 +11,7 @@ from urllib.parse import urlencode
 
 import typer
 from rich import box
+from rich.panel import Panel
 from rich.prompt import Confirm
 from rich.status import Status
 from rich.table import Table
@@ -629,7 +630,33 @@ def prove_lock(
 
         console.print(summary_table)
         console.print()
-
+        
+        # LP Risk Disclosure
+        console.print(Panel(
+            "[bold yellow]⚠️  LIQUIDITY PROVIDER RISK DISCLOSURE[/]\n\n"
+            "By locking USDC, you agree that:\n\n"
+            "• Your funds will be used as DEX liquidity for leveraged trading\n"
+            "• Liquidation events may result in partial loss of capital\n"
+            "• Lost funds are NOT reimbursed - this is the LP risk model\n"
+            "• You earn subnet rewards + liquidation fees in return\n"
+            "• Minimum collateral: 100k USDC to maintain full emission scoring\n"
+            "• If your withdrawable balance falls below 100k USDC, your emission scoring will be reduced\n\n"
+            "[bold red]Only commit funds you can afford to lose.[/]\n\n"
+            "[dim]This disclosure is required for all liquidity providers.[/]",
+            title="[bold red]Important - Read Carefully[/]",
+            border_style="red",
+            padding=(1, 2),
+        ))
+        console.print()
+        
+        if not Confirm.ask(
+            "[bold yellow]I understand the risks and wish to proceed[/]",
+            default=False,
+        ):
+            console.print("[bold red]Lock cancelled. Your funds remain safe.[/]")
+            raise typer.Exit(code=0)
+        
+        console.print()
         if not Confirm.ask(
             "[bold yellow]Proceed with lock creation?[/]", default=True
         ):
