@@ -5,7 +5,6 @@ This guide will help you set up and use the Cartha CLI on the public testnet wit
 ## Prerequisites
 
 - Python 3.11
-- [`uv`](https://github.com/astral-sh/uv) package manager (or `pip`)
 - Bittensor wallet (for subnet registration)
 - Access to the testnet verifier URL
 - Testnet TAO (required for subnet registration)
@@ -99,52 +98,18 @@ You'll need testnet TAO to register your hotkey to the subnet. Get testnet TAO f
 
 Simply visit the faucet and request testnet TAO to your wallet address. You'll need TAO in your wallet to pay for subnet registration.
 
-### Installing `uv`
-
-If you don't have `uv` installed, you can install it with:
-
-**macOS/Linux:**
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-**Or via pip:**
-
-```bash
-pip install uv
-```
-
-After installation, restart your terminal or run `source ~/.bashrc` (or `source ~/.zshrc` on macOS).
-
 ## Installation
 
-### Option 1: Using `uv` (Recommended)
-
-`uv` automatically manages virtual environments - no need to create one manually! It will create a `.venv` directory in the project and handle all dependency isolation.
+Install the Cartha CLI from PyPI:
 
 ```bash
-cd cartha-cli
-uv sync  # Creates .venv automatically and installs dependencies
+pip install cartha-cli
 ```
 
-Then use `uv run` to execute commands (it automatically uses the project's virtual environment):
+Verify the installation:
 
 ```bash
-uv run cartha --help  # Runs in the project's virtual environment
-```
-
-### Option 2: Using `pip`
-
-```bash
-cd cartha-cli
-pip install -e .
+cartha --help
 ```
 
 ## Testnet Configuration
@@ -169,7 +134,7 @@ export BITTENSOR_WALLET_PATH="/path/to/wallet"
 
 ```bash
 # Check CLI can access verifier
-uv run cartha --help
+cartha --help
 
 # Test verifier connectivity
 curl "${CARTHA_VERIFIER_URL}/health"
@@ -195,7 +160,7 @@ You can verify your balances:
 Register your hotkey to the testnet subnet:
 
 ```bash
-uv run cartha miner register \
+cartha miner register \
   --wallet-name <your-wallet-name> \
   --wallet-hotkey <your-hotkey-name> \
   --network test \
@@ -215,7 +180,7 @@ This will:
 Use the streamlined lock flow with the Cartha Lock UI:
 
 ```bash
-uv run cartha vault lock \
+cartha vault lock \
   --coldkey <your-coldkey-name> \
   --hotkey <your-hotkey-name> \
   --pool-id BTCUSD \
@@ -257,12 +222,12 @@ This command will:
 Verify your miner status (no authentication required):
 
 ```bash
-uv run cartha miner status \
+cartha miner status \
   --wallet-name <your-wallet-name> \
   --wallet-hotkey <your-hotkey-name>
 
 # Or with explicit slot UID
-uv run cartha miner status \
+cartha miner status \
   --wallet-name <your-wallet-name> \
   --wallet-hotkey <your-hotkey-name> \
   --slot <your-slot-uid>
@@ -303,22 +268,22 @@ See `testnet/pool_ids.py` for the complete pool mappings and helper functions.
 ### Check CLI Version
 
 ```bash
-uv run cartha version
+cartha version
 ```
 
 ### View Help
 
 ```bash
-uv run cartha --help
-uv run cartha miner register --help
-uv run cartha vault lock --help
-uv run cartha miner status --help
+cartha --help
+cartha miner register --help
+cartha vault lock --help
+cartha miner status --help
 ```
 
 ### Register (Burned Registration)
 
 ```bash
-uv run cartha miner register \
+cartha miner register \
   --wallet-name <name> \
   --wallet-hotkey <hotkey> \
   --network test \
@@ -447,15 +412,15 @@ Before starting, make sure you have:
 
 ```bash
 # 1. Register your hotkey
-uv run cartha miner register --wallet-name test --wallet-hotkey test --network test --netuid 78
+cartha miner register --wallet-name test --wallet-hotkey test --network test --netuid 78
 
 # 2. Check miner status (no authentication needed)
-uv run cartha miner status --wallet-name test --wallet-hotkey test
+cartha miner status --wallet-name test --wallet-hotkey test
 
 # 3. Lock funds (interactive flow)
 # Note: Make sure you're on Base Sepolia network in MetaMask!
 # Chain ID and vault address are auto-detected from pool-id - no need to specify!
-uv run cartha vault lock \
+cartha vault lock \
   --coldkey test \
   --hotkey test \
   --pool-id BTCUSD \

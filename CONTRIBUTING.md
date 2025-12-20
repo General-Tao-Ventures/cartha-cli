@@ -16,22 +16,24 @@ Thank you for your interest in contributing to the Cartha CLI! This guide will h
 1. **Fork and clone the repository**
 
    ```bash
-   git clone https://github.com/your-username/cartha-cli.git
+   git clone https://github.com/General-Tao-Ventures/cartha-cli.git
    cd cartha-cli
    ```
 
-2. **Install dependencies**
+2. **Install dependencies for development**
 
    ```bash
+   # Using uv (recommended for development)
    uv sync
-   # or
-   pip install -e .
+   
+   # Or using pip in editable mode
+   pip install -e ".[dev]"
    ```
 
 3. **Run tests**
 
    ```bash
-   uv run pytest
+   pytest
    # or
    make test
    ```
@@ -63,11 +65,11 @@ git checkout -b fix/your-bug-fix
 
 ```bash
 # Run tests
-uv run pytest
+pytest
 
 # Test CLI commands locally
-uv run cartha --help
-uv run cartha pair status --help
+cartha --help
+cartha miner status --help
 ```
 
 ### 5. Commit Your Changes

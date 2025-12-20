@@ -12,34 +12,36 @@ Cartha CLI makes mining on the Cartha subnet effortless. As the Liquidity Provid
 - **💼 Multi-Pool Management** - Track multiple trading pairs in one place
 - **🔑 Secure by Default** - Your password stays hidden until you actually need it
 
+## Installation
+
+```bash
+pip install cartha-cli
+```
+
 ## Quick Start
 
 ```bash
-# Install dependencies
-uv sync
-
 # Show available commands
-uv run cartha
+cartha --help
 
 # Get started with registration
-uv run cartha miner register --help
+cartha miner register --help
 
 # Check your miner status (no authentication needed)
-uv run cartha miner status --help
+cartha miner status --help
 
 # Check CLI health and connectivity
-uv run cartha health
+cartha health
 
 # Or use short aliases
-uv run cartha m status
-uv run cartha v lock
+cartha m status
+cartha v lock
 ```
 
 ## Requirements
 
 - Python 3.11
 - Bittensor wallet
-- [`uv`](https://github.com/astral-sh/uv) package manager (or pip)
 
 ## What You Can Do
 
