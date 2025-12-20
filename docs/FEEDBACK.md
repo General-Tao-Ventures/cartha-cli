@@ -203,7 +203,7 @@ We aim to respond to:
 If you need help:
 
 1. Check the [README](../README.md) and [testnet guide](../testnet/README.md)
-2. Review command help: `uv run cartha --help`
+2. Review command help: `cartha --help`
 3. Search existing issues
 4. Ask in discussions
 5. Open an issue with your question

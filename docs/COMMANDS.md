@@ -872,7 +872,7 @@ cartha utils config set CARTHA_VERIFIER_URL https://your-verifier-url.com
 
 ### Signature Generation Fails
 
-- Ensure `eth-account` is installed: `uv sync`
+- Ensure `eth-account` is installed: `pip install eth-account`
 - For local signing, verify `CARTHA_EVM_PK` is set correctly
 - For external signing, follow the instructions in the generated files
 
