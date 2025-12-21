@@ -383,24 +383,24 @@ def prove_lock(
             auto_chain_id = None
             try:
                 auto_chain_id = pool_id_to_chain_id(pool_id)
-            except NameError:
+            except (NameError, AttributeError):
                 # Function not available - this shouldn't happen if imports worked
                 # But handle gracefully by trying to import it
                 try:
-                    from testnet.pool_ids import pool_id_to_chain_id
+                    from ..testnet.pool_ids import pool_id_to_chain_id
                     auto_chain_id = pool_id_to_chain_id(pool_id)
-                except ImportError:
+                except (ImportError, ModuleNotFoundError):
                     pass
             
             if not auto_chain_id:
                 # Fallback: try to get from vault address
                 try:
                     auto_chain_id = vault_address_to_chain_id(vault)
-                except NameError:
+                except (NameError, AttributeError):
                     try:
-                        from testnet.pool_ids import vault_address_to_chain_id
+                        from ..testnet.pool_ids import vault_address_to_chain_id
                         auto_chain_id = vault_address_to_chain_id(vault)
-                    except ImportError:
+                    except (ImportError, ModuleNotFoundError):
                         pass
             
             if auto_chain_id:
@@ -431,11 +431,11 @@ def prove_lock(
             expected_chain_id = None
             try:
                 expected_chain_id = vault_address_to_chain_id(vault)
-            except NameError:
+            except (NameError, AttributeError):
                 try:
-                    from testnet.pool_ids import vault_address_to_chain_id
+                    from ..testnet.pool_ids import vault_address_to_chain_id
                     expected_chain_id = vault_address_to_chain_id(vault)
-                except ImportError:
+                except (ImportError, ModuleNotFoundError):
                     pass
             
             if expected_chain_id and expected_chain_id != chain:
