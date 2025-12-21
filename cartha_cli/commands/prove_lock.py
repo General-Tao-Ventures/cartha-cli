@@ -381,26 +381,31 @@ def prove_lock(
         if chain is None:
             # Try to get chain ID from pool ID first
             auto_chain_id = None
+            # Ensure pool_id is properly formatted (lowercase, with 0x prefix)
+            pool_id_normalized = pool_id.lower().strip()
+            if not pool_id_normalized.startswith("0x"):
+                pool_id_normalized = "0x" + pool_id_normalized
+            
             try:
-                auto_chain_id = pool_id_to_chain_id(pool_id)
-            except (NameError, AttributeError):
+                auto_chain_id = pool_id_to_chain_id(pool_id_normalized)
+            except (NameError, AttributeError, TypeError):
                 # Function not available - this shouldn't happen if imports worked
                 # But handle gracefully by trying to import it
                 try:
                     from ..testnet.pool_ids import pool_id_to_chain_id
-                    auto_chain_id = pool_id_to_chain_id(pool_id)
-                except (ImportError, ModuleNotFoundError):
+                    auto_chain_id = pool_id_to_chain_id(pool_id_normalized)
+                except (ImportError, ModuleNotFoundError, TypeError):
                     pass
             
             if not auto_chain_id:
                 # Fallback: try to get from vault address
                 try:
                     auto_chain_id = vault_address_to_chain_id(vault)
-                except (NameError, AttributeError):
+                except (NameError, AttributeError, TypeError):
                     try:
                         from ..testnet.pool_ids import vault_address_to_chain_id
                         auto_chain_id = vault_address_to_chain_id(vault)
-                    except (ImportError, ModuleNotFoundError):
+                    except (ImportError, ModuleNotFoundError, TypeError):
                         pass
             
             if auto_chain_id:
@@ -410,22 +415,29 @@ def prove_lock(
                     f"[bold green]✓ Auto-matched chain ID[/] - {chain_name} (chain ID: {chain})"
                 )
             else:
-                # Fallback: prompt for chain ID if no mapping found
-                console.print(
-                    "[yellow]⚠ No chain ID mapping found. Please provide chain ID.[/]"
-                )
-                while True:
-                    try:
-                        chain_input = typer.prompt("Chain ID", show_default=False)
-                        chain = int(chain_input)
-                        if chain <= 0:
-                            console.print(
-                                "[bold red]Error:[/] Chain ID must be a positive integer"
-                            )
-                            continue
-                        break
-                    except ValueError:
-                        console.print("[bold red]Error:[/] Chain ID must be a valid integer")
+                # Fallback: if on testnet and we have a vault, default to Base Sepolia (84532)
+                if network == "test" and vault:
+                    chain = 84532
+                    console.print(
+                        f"[bold green]✓ Auto-matched chain ID[/] - Base Sepolia (chain ID: 84532) [dim](testnet default)[/]"
+                    )
+                else:
+                    # Prompt for chain ID if no mapping found
+                    console.print(
+                        "[yellow]⚠ No chain ID mapping found. Please provide chain ID.[/]"
+                    )
+                    while True:
+                        try:
+                            chain_input = typer.prompt("Chain ID", show_default=False)
+                            chain = int(chain_input)
+                            if chain <= 0:
+                                console.print(
+                                    "[bold red]Error:[/] Chain ID must be a positive integer"
+                                )
+                                continue
+                            break
+                        except ValueError:
+                            console.print("[bold red]Error:[/] Chain ID must be a valid integer")
         else:
             # Chain ID was provided, verify it matches vault if possible
             expected_chain_id = None
