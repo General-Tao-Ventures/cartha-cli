@@ -43,6 +43,48 @@ from .shared_options import (
 )
 
 # Import pool helpers for pool_id conversion
+# Initialize fallback functions first to ensure they're always defined
+def _fallback_pool_name_to_id(pool_name: str) -> str:
+    """Fallback: encode pool name as hex."""
+    name_bytes = pool_name.encode("utf-8")
+    padded = name_bytes.ljust(32, b"\x00")
+    return "0x" + padded.hex()
+
+def _fallback_pool_id_to_name(pool_id: str) -> str | None:
+    """Fallback: try to decode."""
+    try:
+        hex_str = pool_id.lower().removeprefix("0x")
+        pool_bytes = bytes.fromhex(hex_str)
+        name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
+        return name if name and name.isprintable() else None
+    except Exception:
+        return None
+
+def _fallback_format_pool_id(pool_id: str) -> str:
+    """Fallback: return pool_id as-is."""
+    return pool_id
+
+def _fallback_list_pools() -> dict[str, str]:
+    """Fallback: return empty dict."""
+    return {}
+
+def _fallback_pool_id_to_vault_address(pool_id: str) -> str | None:
+    """Fallback: return None."""
+    return None
+
+def _fallback_vault_address_to_pool_id(vault_address: str) -> str | None:
+    """Fallback: return None."""
+    return None
+
+def _fallback_pool_id_to_chain_id(pool_id: str) -> int | None:
+    """Fallback: return None."""
+    return None
+
+def _fallback_vault_address_to_chain_id(vault_address: str) -> int | None:
+    """Fallback: return None."""
+    return None
+
+# Try to import from testnet module, fallback to defaults if not available
 try:
     from ...testnet.pool_ids import (
         format_pool_id,
@@ -54,7 +96,7 @@ try:
         vault_address_to_chain_id,
         vault_address_to_pool_id,
     )
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     # Fallback if running from different context
     import sys
     from pathlib import Path
@@ -74,47 +116,26 @@ except ImportError:
                 vault_address_to_chain_id,
                 vault_address_to_pool_id,
             )
-        except ImportError:
-            # Final fallback
-            def pool_name_to_id(pool_name: str) -> str:
-                """Fallback: encode pool name as hex."""
-                name_bytes = pool_name.encode("utf-8")
-                padded = name_bytes.ljust(32, b"\x00")
-                return "0x" + padded.hex()
-            
-            def pool_id_to_name(pool_id: str) -> str | None:
-                """Fallback: try to decode."""
-                try:
-                    hex_str = pool_id.lower().removeprefix("0x")
-                    pool_bytes = bytes.fromhex(hex_str)
-                    name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-                    return name if name and name.isprintable() else None
-                except Exception:
-                    return None
-            
-            def format_pool_id(pool_id: str) -> str:
-                """Fallback: return pool_id as-is."""
-                return pool_id
-            
-            def list_pools() -> dict[str, str]:
-                """Fallback: return empty dict."""
-                return {}
-            
-            def pool_id_to_vault_address(pool_id: str) -> str | None:
-                """Fallback: return None."""
-                return None
-            
-            def vault_address_to_pool_id(vault_address: str) -> str | None:
-                """Fallback: return None."""
-                return None
-            
-            def pool_id_to_chain_id(pool_id: str) -> int | None:
-                """Fallback: return None."""
-                return None
-            
-            def vault_address_to_chain_id(vault_address: str) -> int | None:
-                """Fallback: return None."""
-                return None
+        except (ImportError, ModuleNotFoundError):
+            # Use fallback functions
+            pool_name_to_id = _fallback_pool_name_to_id
+            pool_id_to_name = _fallback_pool_id_to_name
+            format_pool_id = _fallback_format_pool_id
+            list_pools = _fallback_list_pools
+            pool_id_to_vault_address = _fallback_pool_id_to_vault_address
+            vault_address_to_pool_id = _fallback_vault_address_to_pool_id
+            pool_id_to_chain_id = _fallback_pool_id_to_chain_id
+            vault_address_to_chain_id = _fallback_vault_address_to_chain_id
+    else:
+        # Use fallback functions if testnet directory doesn't exist
+        pool_name_to_id = _fallback_pool_name_to_id
+        pool_id_to_name = _fallback_pool_id_to_name
+        format_pool_id = _fallback_format_pool_id
+        list_pools = _fallback_list_pools
+        pool_id_to_vault_address = _fallback_pool_id_to_vault_address
+        vault_address_to_pool_id = _fallback_vault_address_to_pool_id
+        pool_id_to_chain_id = _fallback_pool_id_to_chain_id
+        vault_address_to_chain_id = _fallback_vault_address_to_chain_id
 
 
 def prove_lock(

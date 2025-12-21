@@ -50,3 +50,6 @@ cartha = "cartha_cli:main"
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
+
+[tool.hatchling.build.targets.wheel]
+packages = ["cartha_cli", "testnet"]

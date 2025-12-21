@@ -7,13 +7,27 @@ import typer
 from .common import console
 
 # Import pool helpers for pool_id conversion
+# Initialize fallback functions first to ensure they're always defined
+def _fallback_list_pools() -> dict[str, str]:
+    """Fallback: return empty dict."""
+    return {}
+
+def _fallback_pool_id_to_vault_address(pool_id: str) -> str | None:
+    """Fallback: return None."""
+    return None
+
+def _fallback_pool_id_to_chain_id(pool_id: str) -> int | None:
+    """Fallback: return None."""
+    return None
+
+# Try to import from testnet module, fallback to defaults if not available
 try:
     from ...testnet.pool_ids import (
         list_pools,
         pool_id_to_chain_id,
         pool_id_to_vault_address,
     )
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     # Fallback if running from different context
     import sys
     from pathlib import Path
@@ -28,19 +42,16 @@ except ImportError:
                 pool_id_to_chain_id,
                 pool_id_to_vault_address,
             )
-        except ImportError:
-            # Final fallback
-            def list_pools() -> dict[str, str]:
-                """Fallback: return empty dict."""
-                return {}
-
-            def pool_id_to_vault_address(pool_id: str) -> str | None:
-                """Fallback: return None."""
-                return None
-
-            def pool_id_to_chain_id(pool_id: str) -> int | None:
-                """Fallback: return None."""
-                return None
+        except (ImportError, ModuleNotFoundError):
+            # Use fallback functions
+            list_pools = _fallback_list_pools
+            pool_id_to_vault_address = _fallback_pool_id_to_vault_address
+            pool_id_to_chain_id = _fallback_pool_id_to_chain_id
+    else:
+        # Use fallback functions if testnet directory doesn't exist
+        list_pools = _fallback_list_pools
+        pool_id_to_vault_address = _fallback_pool_id_to_vault_address
+        pool_id_to_chain_id = _fallback_pool_id_to_chain_id
 
 
 def pools(

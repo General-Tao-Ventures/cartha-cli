@@ -35,21 +35,25 @@ from .shared_options import (
 )
 
 # Import pool name helper
+# Initialize fallback function first to ensure it's always defined
+def _fallback_pool_id_to_name(pool_id: str) -> str | None:
+    """Simple fallback to decode pool ID."""
+    try:
+        hex_str = pool_id.lower().removeprefix("0x")
+        pool_bytes = bytes.fromhex(hex_str)
+        name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
+        if name and name.isprintable():
+            return name
+    except Exception:
+        pass
+    return None
+
+# Try to import from testnet module, fallback to default if not available
 try:
     from ...testnet.pool_ids import pool_id_to_name
-except ImportError:
-    # Fallback if running from different context
-    def pool_id_to_name(pool_id: str) -> str | None:
-        """Simple fallback to decode pool ID."""
-        try:
-            hex_str = pool_id.lower().removeprefix("0x")
-            pool_bytes = bytes.fromhex(hex_str)
-            name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-            if name and name.isprintable():
-                return name
-        except Exception:
-            pass
-        return None
+except (ImportError, ModuleNotFoundError):
+    # Use fallback function
+    pool_id_to_name = _fallback_pool_id_to_name
 
 
 def pair_status(
