@@ -639,8 +639,8 @@ def prove_lock(
             "• Liquidation events may result in partial loss of capital\n"
             "• Lost funds are NOT reimbursed - this is the LP risk model\n"
             "• You earn subnet rewards + liquidation fees in return\n"
-            "• Minimum collateral: 100k USDC to maintain full emission scoring\n"
-            "• If your withdrawable balance falls below 100k USDC, your emission scoring will be reduced\n\n"
+            "• Minimum collateral: 100k USDC total across all your positions to maintain full emission scoring\n"
+            "• If your total withdrawable balance across all positions falls below 100k USDC, your emission scoring will be reduced\n\n"
             "[bold red]Only commit funds you can afford to lose.[/]\n\n"
             "[dim]This disclosure is required for all liquidity providers.[/]\n"
             "[dim]more information: https://docs.0xmarkets.io/legal-and-risk[/]",
