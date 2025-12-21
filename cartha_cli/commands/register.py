@@ -68,8 +68,11 @@ def register(
     session tokens instead of passwords.
     """
 
-    assert wallet_name is not None  # nosec - enforced by Typer prompt
-    assert wallet_hotkey is not None  # nosec - enforced by Typer prompt
+    # Prompt for wallet name and hotkey if not provided
+    if wallet_name is None:
+        wallet_name = typer.prompt("Coldkey wallet name", default="default")
+    if wallet_hotkey is None:
+        wallet_hotkey = typer.prompt("Hotkey name", default="default")
 
     # Auto-map netuid and verifier URL based on network
     if network == "test":
