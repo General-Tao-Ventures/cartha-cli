@@ -50,7 +50,7 @@ def _fallback_pool_id_to_name(pool_id: str) -> str | None:
 
 # Try to import from testnet module, fallback to default if not available
 try:
-    from ...testnet.pool_ids import pool_id_to_name
+    from ..testnet.pool_ids import pool_id_to_name
 except (ImportError, ModuleNotFoundError):
     # Use fallback function
     pool_id_to_name = _fallback_pool_id_to_name

@@ -86,7 +86,8 @@ def _fallback_vault_address_to_chain_id(vault_address: str) -> int | None:
 
 # Try to import from testnet module, fallback to defaults if not available
 try:
-    from ...testnet.pool_ids import (
+    # Import from cartha_cli.testnet (works both in development and when installed)
+    from ..testnet.pool_ids import (
         format_pool_id,
         list_pools,
         pool_id_to_chain_id,
@@ -97,45 +98,15 @@ try:
         vault_address_to_pool_id,
     )
 except (ImportError, ModuleNotFoundError):
-    # Fallback if running from different context
-    import sys
-    from pathlib import Path
-
-    # Try adding parent directory to path
-    testnet_dir = Path(__file__).parent.parent.parent / "testnet"
-    if testnet_dir.exists():
-        sys.path.insert(0, str(testnet_dir.parent))
-        try:
-            from testnet.pool_ids import (
-                format_pool_id,
-                list_pools,
-                pool_id_to_chain_id,
-                pool_id_to_name,
-                pool_id_to_vault_address,
-                pool_name_to_id,
-                vault_address_to_chain_id,
-                vault_address_to_pool_id,
-            )
-        except (ImportError, ModuleNotFoundError):
-            # Use fallback functions
-            pool_name_to_id = _fallback_pool_name_to_id
-            pool_id_to_name = _fallback_pool_id_to_name
-            format_pool_id = _fallback_format_pool_id
-            list_pools = _fallback_list_pools
-            pool_id_to_vault_address = _fallback_pool_id_to_vault_address
-            vault_address_to_pool_id = _fallback_vault_address_to_pool_id
-            pool_id_to_chain_id = _fallback_pool_id_to_chain_id
-            vault_address_to_chain_id = _fallback_vault_address_to_chain_id
-    else:
-        # Use fallback functions if testnet directory doesn't exist
-        pool_name_to_id = _fallback_pool_name_to_id
-        pool_id_to_name = _fallback_pool_id_to_name
-        format_pool_id = _fallback_format_pool_id
-        list_pools = _fallback_list_pools
-        pool_id_to_vault_address = _fallback_pool_id_to_vault_address
-        vault_address_to_pool_id = _fallback_vault_address_to_pool_id
-        pool_id_to_chain_id = _fallback_pool_id_to_chain_id
-        vault_address_to_chain_id = _fallback_vault_address_to_chain_id
+    # Use fallback functions if import failed
+    pool_name_to_id = _fallback_pool_name_to_id
+    pool_id_to_name = _fallback_pool_id_to_name
+    format_pool_id = _fallback_format_pool_id
+    list_pools = _fallback_list_pools
+    pool_id_to_vault_address = _fallback_pool_id_to_vault_address
+    vault_address_to_pool_id = _fallback_vault_address_to_pool_id
+    pool_id_to_chain_id = _fallback_pool_id_to_chain_id
+    vault_address_to_chain_id = _fallback_vault_address_to_chain_id
 
 
 def prove_lock(

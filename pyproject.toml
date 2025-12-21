@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cartha-cli"
-version = "1.0.2"
+version = "1.0.3"
 description = "CLI utilities for Cartha subnet miners."
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -51,5 +51,3 @@ cartha = "cartha_cli:main"
 addopts = "-ra"
 testpaths = ["tests"]
 
-[tool.hatchling.build.targets.wheel]
-packages = ["cartha_cli", "testnet"]

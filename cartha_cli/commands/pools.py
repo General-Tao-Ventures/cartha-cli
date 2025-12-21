@@ -22,36 +22,16 @@ def _fallback_pool_id_to_chain_id(pool_id: str) -> int | None:
 
 # Try to import from testnet module, fallback to defaults if not available
 try:
-    from ...testnet.pool_ids import (
+    from ..testnet.pool_ids import (
         list_pools,
         pool_id_to_chain_id,
         pool_id_to_vault_address,
     )
 except (ImportError, ModuleNotFoundError):
-    # Fallback if running from different context
-    import sys
-    from pathlib import Path
-
-    # Try adding parent directory to path
-    testnet_dir = Path(__file__).parent.parent.parent / "testnet"
-    if testnet_dir.exists():
-        sys.path.insert(0, str(testnet_dir.parent))
-        try:
-            from testnet.pool_ids import (
-                list_pools,
-                pool_id_to_chain_id,
-                pool_id_to_vault_address,
-            )
-        except (ImportError, ModuleNotFoundError):
-            # Use fallback functions
-            list_pools = _fallback_list_pools
-            pool_id_to_vault_address = _fallback_pool_id_to_vault_address
-            pool_id_to_chain_id = _fallback_pool_id_to_chain_id
-    else:
-        # Use fallback functions if testnet directory doesn't exist
-        list_pools = _fallback_list_pools
-        pool_id_to_vault_address = _fallback_pool_id_to_vault_address
-        pool_id_to_chain_id = _fallback_pool_id_to_chain_id
+    # Use fallback functions if import failed
+    list_pools = _fallback_list_pools
+    pool_id_to_vault_address = _fallback_pool_id_to_vault_address
+    pool_id_to_chain_id = _fallback_pool_id_to_chain_id
 
 
 def pools(
