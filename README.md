@@ -10,7 +10,7 @@ Cartha CLI makes mining on the Cartha subnet effortless. As the Liquidity Provid
 - **📊 Instant Status Updates** - See all your pools, balances, and expiration dates at a glance
 - **⏰ Smart Expiration Warnings** - Never miss a renewal with color-coded countdowns
 - **💼 Multi-Pool Management** - Track multiple trading pairs in one place
-- **🔑 Secure by Default** - Your password stays hidden until you actually need it
+- **🔒 Secure Authentication** - Session-based authentication with your Bittensor hotkey
 
 ## Installation
 
@@ -31,17 +31,19 @@ cartha miner register --help
 cartha miner status --help
 
 # Check CLI health and connectivity
-cartha health
+cartha utils health
 
 # Or use short aliases
 cartha m status
 cartha v lock
+cartha u health
 ```
 
 ## Requirements
 
 - Python 3.11
-- Bittensor wallet
+- Bittensor wallet within btcli
+    - learn how to create/import one here https://docs.learnbittensor.org/keys/working-with-keys
 
 ## What You Can Do
 
@@ -57,14 +59,12 @@ cartha miner register --wallet-name your-wallet --wallet-hotkey your-hotkey
 cartha miner status --wallet-name your-wallet --wallet-hotkey your-hotkey
 # Or use the short alias: cartha m status
 ```
-
-### Track Your Pools
-
-See all your active trading pairs, balances, and when they expire—all in one command. The CLI shows you:
-- Which pools are active and earning rewards
-- How much you have locked in each pool
-- Days remaining before expiration (with helpful warnings)
-- Which pools are included in the next reward epoch
+> **Track Your Miner Status**
+> See all your active trading pairs, balances, and when they expire—all in one command. The CLI shows you:
+> - Which pools are active and earning rewards
+> - How much you have locked in each pool
+> - Days remaining before expiration (with helpful warnings)
+> - Which pools are included in the next reward epoch
 
 ### View Available Pools
 
@@ -77,14 +77,14 @@ cartha vault pools
 
 This shows you which pools are available, their full pool IDs, vault contract addresses, and chain IDs.
 
-### Lock Your Funds
+### Lock Your Funds to start Mining
 
 Create a new lock position with the streamlined lock flow:
 ```bash
 cartha vault lock \
   --coldkey your-wallet \
   --hotkey your-hotkey \
-  --pool-id "BTCUSD" \
+  --pool-id BTCUSD \
   --amount 1000.0 \
   --lock-days 30 \
   --owner-evm 0xYourEVMAddress \
@@ -103,36 +103,31 @@ The CLI will:
 1. Check your registration on the specified network (subnet 35 for finney, subnet 78 for test)
 2. Authenticate with your Bittensor hotkey
 3. Request a signed LockRequest from the verifier
-4. Automatically open the Cartha Lock UI in your browser with all parameters pre-filled
+4. Automatically open the Cartha Lock UI in your browser with all parameters pre-filled (you can also paste the url into your browser manually)
 5. Guide you through Phase 1 (Approve USDC) and Phase 2 (Lock Position) via the web interface
 6. Automatically detect when approval completes and proceed to Phase 2
 7. The verifier automatically detects your lock and adds you to the upcoming epoch
 
 **Managing Positions**: Visit https://cartha.finance/manage to view all your positions, extend locks, or top up existing positions.
 
-### View Your Password
-
-When you need your password (like for signing transactions):
-```bash
-cartha miner password --wallet-name your-wallet --wallet-hotkey your-hotkey
-```
-
-**Tip:** Use `miner status` for daily checks—it's faster and doesn't require signing. Only use `miner password` when you actually need it.
-
 ### Check Your Setup
 
 Verify your CLI is configured correctly and can reach all services:
 
 ```bash
-cartha health
+cartha utils health
+# Or use the short alias
+cartha u health
 ```
 
 This checks:
 - Verifier connectivity and latency
 - Bittensor network connectivity
 - Configuration validation
+- Subnet metadata
+- Environment variables
 
-Use `cartha health --verbose` for detailed troubleshooting information.
+Use `cartha utils health --verbose` (or `cartha u health --verbose`) for detailed troubleshooting information.
 
 ## Need Help?
 
@@ -146,4 +141,4 @@ We welcome contributions! Please see our [Feedback & Support](docs/FEEDBACK.md) 
 
 ---
 
-**Made with ❤ by GTV**
+**Made with ❤ by General Tensor**
