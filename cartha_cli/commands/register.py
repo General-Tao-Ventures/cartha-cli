@@ -79,22 +79,6 @@ def register(
         netuid = 78
     elif network == "finney":
         netuid = 35
-        # Warn that mainnet is not live yet
-        console.print()
-        console.print("[bold yellow]⚠️  MAINNET NOT AVAILABLE YET[/]")
-        console.print()
-        console.print("[yellow]Cartha subnet is currently in testnet phase (subnet 78 on test network).[/]")
-        console.print("[yellow]Mainnet (subnet 35 on finney network) has not been announced yet.[/]")
-        console.print()
-        console.print("[bold cyan]To use testnet:[/]")
-        console.print("  cartha miner register --network test")
-        console.print()
-        console.print("[dim]If you continue with finney network, registration will attempt[/]")
-        console.print("[dim]subnet 35 but the subnet may not be operational yet.[/]")
-        console.print()
-        if not Confirm.ask("[yellow]Continue with finney network anyway?[/]", default=False):
-            console.print("[yellow]Cancelled. Use --network test for testnet.[/]")
-            raise typer.Exit(code=0)
     # Note: netuid parameter is kept for backwards compatibility / explicit override
     
     from ..config import get_verifier_url_for_network

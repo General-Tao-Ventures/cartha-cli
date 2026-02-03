@@ -324,6 +324,20 @@ def process_lock_transaction(
     )
 
 
+def fetch_pools() -> list[dict[str, Any]]:
+    """Fetch available pools from verifier.
+    
+    Returns list of pools with:
+    - name: Human-readable pool name (e.g., "BTC/USD")
+    - pool_id: Hex pool ID (bytes32)
+    - vault_address: Vault contract address
+    - chain_id: Chain ID
+    - network: Network name ("mainnet" or "testnet")
+    """
+    data = _request("GET", "/pools")
+    return data.get("pools", [])
+
+
 # REMOVED: Old endpoints - replaced by new lock flow
 # fetch_pair_password, register_pair_password, submit_lock_proof removed
 
@@ -339,4 +353,5 @@ __all__ = [
     "request_lock_signature",
     "get_lock_status",
     "process_lock_transaction",
+    "fetch_pools",
 ]

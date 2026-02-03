@@ -17,7 +17,7 @@ from .common import console
 ENV_VAR_DOCS: dict[str, dict[str, Any]] = {
     "CARTHA_VERIFIER_URL": {
         "description": "URL of the Cartha verifier service",
-        "default": "https://cartha-verifier-826542474079.us-central1.run.app",
+        "default": "https://cartha-verifier-193291340038.us-central1.run.app",
         "required": False,
     },
     "CARTHA_NETWORK": {

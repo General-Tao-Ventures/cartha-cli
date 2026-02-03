@@ -34,26 +34,8 @@ from .shared_options import (
     json_output_option,
 )
 
-# Import pool name helper
-# Initialize fallback function first to ensure it's always defined
-def _fallback_pool_id_to_name(pool_id: str) -> str | None:
-    """Simple fallback to decode pool ID."""
-    try:
-        hex_str = pool_id.lower().removeprefix("0x")
-        pool_bytes = bytes.fromhex(hex_str)
-        name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-        if name and name.isprintable():
-            return name
-    except Exception:
-        pass
-    return None
-
-# Try to import from testnet module, fallback to default if not available
-try:
-    from ..testnet.pool_ids import pool_id_to_name
-except (ImportError, ModuleNotFoundError):
-    # Use fallback function
-    pool_id_to_name = _fallback_pool_id_to_name
+# Import pool name helper from pool_client (fetches from verifier API)
+from ..pool_client import pool_id_to_name
 
 
 def pair_status(
@@ -100,13 +82,6 @@ def pair_status(
             netuid = 78
         elif network == "finney":
             netuid = 35
-            # Warn that mainnet is not live yet
-            console.print()
-            console.print("[bold yellow]⚠️  MAINNET NOT AVAILABLE YET[/]")
-            console.print("[yellow]Cartha subnet is currently in testnet phase (subnet 78).[/]")
-            console.print("[yellow]Mainnet (subnet 35) has not been announced yet.[/]")
-            console.print("[dim]Use --network test to access testnet.[/]")
-            console.print()
         # Note: netuid parameter is kept for backwards compatibility / explicit override
         
         from ..config import get_verifier_url_for_network

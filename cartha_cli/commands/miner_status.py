@@ -79,13 +79,6 @@ def miner_status(
             netuid = 78
         elif network == "finney":
             netuid = 35
-            # Warn that mainnet is not live yet
-            console.print()
-            console.print("[bold yellow]⚠️  MAINNET NOT AVAILABLE YET[/]")
-            console.print("[yellow]Cartha subnet is currently in testnet phase (subnet 78).[/]")
-            console.print("[yellow]Mainnet (subnet 35) has not been announced yet.[/]")
-            console.print("[dim]Use --network test to access testnet.[/]")
-            console.print()
         # Note: netuid parameter is kept for backwards compatibility / explicit override
         
         from ..config import get_verifier_url_for_network
@@ -488,25 +481,14 @@ def miner_status(
 
             console.print(pool_table)
 
-        # Concise reminder
-        console.print()
-        console.print("[bold cyan]━━━ Reminders ━━━[/]")
-        console.print(
-            "• Lock expiration: USDC returned automatically, emissions stop for that pool."
-        )
-        console.print(
-            "• Top-ups/extensions: Happen automatically on-chain. No CLI action needed."
-        )
-        if pools and len(pools) > 1:
-            console.print(
-                "• Multiple pools: Each pool is tracked separately. Expired pools stop earning, others continue."
-            )
-        
         # Link to web interface
         console.print()
         console.print("[bold cyan]━━━ Web Interface ━━━[/]")
         console.print(
-            "[cyan]🌐 View and manage your positions:[/] [bold]https://cartha.finance[/]"
+            "[cyan]🌐 Manage your positions:[/] [bold]https://cartha.finance[/]"
+        )
+        console.print(
+            "[dim]  • Deposit new lock positions[/]"
         )
         console.print(
             "[dim]  • View all your lock positions[/]"
@@ -516,9 +498,6 @@ def miner_status(
         )
         console.print(
             "[dim]  • Top up existing positions[/]"
-        )
-        console.print(
-            "[dim]  • Claim testnet USDC from faucet[/]"
         )
 
     return
