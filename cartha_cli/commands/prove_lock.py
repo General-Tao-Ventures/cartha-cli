@@ -546,17 +546,24 @@ def prove_lock(
         
         # LP Risk Disclosure
         console.print(Panel(
-            "[bold yellow]⚠️  LIQUIDITY PROVIDER RISK DISCLOSURE[/]\n\n"
-            "By locking USDC, you agree that:\n\n"
-            "• Your funds will be used as DEX liquidity for leveraged trading\n"
-            "• Liquidation events may result in partial loss of capital\n"
-            "• Lost funds are NOT reimbursed - this is the LP risk model\n"
-            "• You earn subnet rewards + liquidation fees in return\n"
-            "• Minimum collateral: 100k USDC total across all your positions to maintain full emission scoring\n"
-            "• If your total withdrawable balance across all positions falls below 100k USDC, your emission scoring will be reduced\n\n"
+            "[bold yellow]⚠️  MINER RISK DISCLOSURE (LIQUIDITY PROVIDERS)[/]\n\n"
+            "By locking USDC, you acknowledge and agree that:\n\n"
+            "[bold]Capital at Risk[/]\n"
+            "• Losses may occur due to market conditions, trader profitability, failed or delayed liquidations, oracle events, or other protocol outcomes\n"
+            "• Using the Protocol may result in partial or total loss of funds\n\n"
+            "[bold]Lock-up Risk[/]\n"
+            "• Assets may be committed for periods and may not be withdrawable until unlock conditions are satisfied\n\n"
+            "[bold]Reward Variability[/]\n"
+            "• Any rewards (including protocol incentives) can change materially, be reduced, paused, or stop entirely\n"
+            "• Rewards are not guaranteed\n\n"
+            "[bold]Stable Asset Risk[/]\n"
+            "• \"Stable\" assets can de-peg or be impacted by issuer, market, or regulatory events\n\n"
+            "[bold]Additional Notices[/]\n"
+            "• Non-custodial: We do not custody digital assets. You control your wallet and private keys\n"
+            "• No advice: Nothing on the Services is investment, legal, tax, or financial advice\n\n"
             "[bold red]Only commit funds you can afford to lose.[/]\n\n"
-            "[dim]This disclosure is required for all liquidity providers.[/]\n"
-            "[dim]more information: https://docs.0xmarkets.io/legal-and-risk[/]",
+            "[dim]By proceeding, you agree to the Cartha Terms of Service.[/]\n"
+            "[dim]Full terms: https://docs.0xmarkets.io/legal-and-risk[/]",
             title="[bold red]Important - Read Carefully[/]",
             border_style="red",
             padding=(1, 2),
