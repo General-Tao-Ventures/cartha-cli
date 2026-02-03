@@ -42,71 +42,17 @@ from .shared_options import (
     json_output_option,
 )
 
-# Import pool helpers for pool_id conversion
-# Initialize fallback functions first to ensure they're always defined
-def _fallback_pool_name_to_id(pool_name: str) -> str:
-    """Fallback: encode pool name as hex."""
-    name_bytes = pool_name.encode("utf-8")
-    padded = name_bytes.ljust(32, b"\x00")
-    return "0x" + padded.hex()
-
-def _fallback_pool_id_to_name(pool_id: str) -> str | None:
-    """Fallback: try to decode."""
-    try:
-        hex_str = pool_id.lower().removeprefix("0x")
-        pool_bytes = bytes.fromhex(hex_str)
-        name = pool_bytes.rstrip(b"\x00").decode("utf-8", errors="ignore")
-        return name if name and name.isprintable() else None
-    except Exception:
-        return None
-
-def _fallback_format_pool_id(pool_id: str) -> str:
-    """Fallback: return pool_id as-is."""
-    return pool_id
-
-def _fallback_list_pools() -> dict[str, str]:
-    """Fallback: return empty dict."""
-    return {}
-
-def _fallback_pool_id_to_vault_address(pool_id: str) -> str | None:
-    """Fallback: return None."""
-    return None
-
-def _fallback_vault_address_to_pool_id(vault_address: str) -> str | None:
-    """Fallback: return None."""
-    return None
-
-def _fallback_pool_id_to_chain_id(pool_id: str) -> int | None:
-    """Fallback: return None."""
-    return None
-
-def _fallback_vault_address_to_chain_id(vault_address: str) -> int | None:
-    """Fallback: return None."""
-    return None
-
-# Try to import from testnet module, fallback to defaults if not available
-try:
-    # Import from cartha_cli.testnet (works both in development and when installed)
-    from ..testnet.pool_ids import (
-        format_pool_id,
-        list_pools,
-        pool_id_to_chain_id,
-        pool_id_to_name,
-        pool_id_to_vault_address,
-        pool_name_to_id,
-        vault_address_to_chain_id,
-        vault_address_to_pool_id,
-    )
-except (ImportError, ModuleNotFoundError):
-    # Use fallback functions if import failed
-    pool_name_to_id = _fallback_pool_name_to_id
-    pool_id_to_name = _fallback_pool_id_to_name
-    format_pool_id = _fallback_format_pool_id
-    list_pools = _fallback_list_pools
-    pool_id_to_vault_address = _fallback_pool_id_to_vault_address
-    vault_address_to_pool_id = _fallback_vault_address_to_pool_id
-    pool_id_to_chain_id = _fallback_pool_id_to_chain_id
-    vault_address_to_chain_id = _fallback_vault_address_to_chain_id
+# Import pool helpers from pool_client (fetches from verifier API)
+from ..pool_client import (
+    format_pool_id,
+    list_pools,
+    pool_id_to_chain_id,
+    pool_id_to_name,
+    pool_id_to_vault_address,
+    pool_name_to_id,
+    vault_address_to_chain_id,
+    vault_address_to_pool_id,
+)
 
 
 def prove_lock(
@@ -153,22 +99,6 @@ def prove_lock(
             netuid = 78
         elif network == "finney":
             netuid = 35
-            # Warn that mainnet is not live yet
-            console.print()
-            console.print("[bold yellow]⚠️  MAINNET NOT AVAILABLE YET[/]")
-            console.print()
-            console.print("[yellow]Cartha subnet is currently in testnet phase (subnet 78 on test network).[/]")
-            console.print("[yellow]Mainnet (subnet 35 on finney network) has not been announced yet.[/]")
-            console.print()
-            console.print("[bold cyan]To use testnet:[/]")
-            console.print("  cartha vault lock --network test ...")
-            console.print()
-            console.print("[dim]If you continue with finney network, the CLI will attempt to connect[/]")
-            console.print("[dim]but the subnet may not be operational yet.[/]")
-            console.print()
-            if not Confirm.ask("[yellow]Continue with finney network anyway?[/]", default=False):
-                console.print("[yellow]Cancelled. Use --network test for testnet.[/]")
-                raise typer.Exit(code=0)
         else:
             # Default to finney settings if unknown network
             netuid = 35
@@ -386,72 +316,51 @@ def prove_lock(
             if not pool_id_normalized.startswith("0x"):
                 pool_id_normalized = "0x" + pool_id_normalized
             
-            try:
-                auto_chain_id = pool_id_to_chain_id(pool_id_normalized)
-            except (NameError, AttributeError, TypeError):
-                # Function not available - this shouldn't happen if imports worked
-                # But handle gracefully by trying to import it
-                try:
-                    from ..testnet.pool_ids import pool_id_to_chain_id
-                    auto_chain_id = pool_id_to_chain_id(pool_id_normalized)
-                except (ImportError, ModuleNotFoundError, TypeError):
-                    pass
+            auto_chain_id = pool_id_to_chain_id(pool_id_normalized)
             
             if not auto_chain_id:
                 # Fallback: try to get from vault address
-                try:
-                    auto_chain_id = vault_address_to_chain_id(vault)
-                except (NameError, AttributeError, TypeError):
-                    try:
-                        from ..testnet.pool_ids import vault_address_to_chain_id
-                        auto_chain_id = vault_address_to_chain_id(vault)
-                    except (ImportError, ModuleNotFoundError, TypeError):
-                        pass
+                auto_chain_id = vault_address_to_chain_id(vault)
             
             if auto_chain_id:
                 chain = auto_chain_id
-                chain_name = "Base Sepolia" if chain == 84532 else f"Chain {chain}"
+                if chain == 8453:
+                    chain_name = "Base Mainnet"
+                elif chain == 84532:
+                    chain_name = "Base Sepolia"
+                else:
+                    chain_name = f"Chain {chain}"
                 console.print(
                     f"[bold green]✓ Auto-matched chain ID[/] - {chain_name} (chain ID: {chain})"
                 )
             else:
-                # Fallback: if on testnet and we have a vault, default to Base Sepolia (84532)
-                if network == "test" and vault:
-                    chain = 84532
-                    console.print(
-                        f"[bold green]✓ Auto-matched chain ID[/] - Base Sepolia (chain ID: 84532) [dim](testnet default)[/]"
-                    )
-                else:
-                    # Prompt for chain ID if no mapping found
-                    console.print(
-                        "[yellow]⚠ No chain ID mapping found. Please provide chain ID.[/]"
-                    )
-                    while True:
-                        try:
-                            chain_input = typer.prompt("Chain ID", show_default=False)
-                            chain = int(chain_input)
-                            if chain <= 0:
-                                console.print(
-                                    "[bold red]Error:[/] Chain ID must be a positive integer"
-                                )
-                                continue
-                            break
-                        except ValueError:
-                            console.print("[bold red]Error:[/] Chain ID must be a valid integer")
+                # Prompt for chain ID if no mapping found
+                console.print(
+                    "[yellow]⚠ No chain ID mapping found. Please provide chain ID.[/]"
+                )
+                while True:
+                    try:
+                        chain_input = typer.prompt("Chain ID", show_default=False)
+                        chain = int(chain_input)
+                        if chain <= 0:
+                            console.print(
+                                "[bold red]Error:[/] Chain ID must be a positive integer"
+                            )
+                            continue
+                        break
+                    except ValueError:
+                        console.print("[bold red]Error:[/] Chain ID must be a valid integer")
         else:
             # Chain ID was provided, verify it matches vault if possible
-            expected_chain_id = None
-            try:
-                expected_chain_id = vault_address_to_chain_id(vault)
-            except (NameError, AttributeError):
-                try:
-                    from ..testnet.pool_ids import vault_address_to_chain_id
-                    expected_chain_id = vault_address_to_chain_id(vault)
-                except (ImportError, ModuleNotFoundError):
-                    pass
+            expected_chain_id = vault_address_to_chain_id(vault)
             
             if expected_chain_id and expected_chain_id != chain:
-                chain_name = "Base Sepolia" if expected_chain_id == 84532 else f"Chain {expected_chain_id}"
+                if expected_chain_id == 8453:
+                    chain_name = "Base Mainnet"
+                elif expected_chain_id == 84532:
+                    chain_name = "Base Sepolia"
+                else:
+                    chain_name = f"Chain {expected_chain_id}"
                 console.print(
                     f"[bold yellow]⚠ Warning:[/] Vault {vault} is on {chain_name} (chain ID: {expected_chain_id}), "
                     f"but you specified chain ID {chain}"
@@ -674,8 +583,11 @@ def prove_lock(
             "\n[bold yellow]⚠️  Execute these transactions to complete your lock:[/]\n"
         )
 
-        # USDC contract address for Base Sepolia
-        usdc_contract_address = "0x2340D09c348930A76c8c2783EDa8610F699A51A8"
+        # USDC contract address based on chain ID
+        if chain == 8453:  # Base Mainnet
+            usdc_contract_address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+        else:  # Base Sepolia (default)
+            usdc_contract_address = "0x2340D09c348930A76c8c2783EDa8610F699A51A8"
         
         console.print("[bold cyan]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/]")
         console.print("[bold]Phase 1: Approve USDC[/]")
@@ -694,7 +606,7 @@ def prove_lock(
         phase1_params = {
             "phase": "1",
             "chainId": str(chain),
-            "usdcAddress": "0x2340D09c348930A76c8c2783EDa8610F699A51A8",
+            "usdcAddress": usdc_contract_address,
             "vaultAddress": vault,
             "spender": vault,
             "amount": str(amount_base_units),
@@ -714,8 +626,11 @@ def prove_lock(
         console.print("[dim]The CLI will automatically detect when the approval is complete.[/]")
         console.print("[dim]You can also press Ctrl+C to skip and continue manually.[/]")
         
-        # Base Sepolia RPC endpoint
-        base_sepolia_rpc = "https://sepolia.base.org"
+        # RPC endpoint based on chain ID
+        if chain == 8453:  # Base Mainnet
+            rpc_endpoint = "https://mainnet.base.org"
+        else:  # Base Sepolia (default)
+            rpc_endpoint = "https://sepolia.base.org"
         
         # ERC20 ABI for allowance function and Approval event
         erc20_abi = [
@@ -746,7 +661,7 @@ def prove_lock(
         
         approval_detected = False
         try:
-            w3 = Web3(Web3.HTTPProvider(base_sepolia_rpc))
+            w3 = Web3(Web3.HTTPProvider(rpc_endpoint))
             usdc_contract = w3.eth.contract(
                 address=Web3.to_checksum_address(usdc_contract_address),
                 abi=erc20_abi
@@ -941,13 +856,15 @@ def prove_lock(
             }
         ]
         
-        # Get RPC endpoint for Base Sepolia
+        # Get RPC endpoint based on chain ID
         rpc_url = None
-        if chain == 84532:  # Base Sepolia
+        if chain == 8453:  # Base Mainnet
+            rpc_url = "https://mainnet.base.org"
+        elif chain == 84532:  # Base Sepolia
             rpc_url = "https://sepolia.base.org"
         else:
-            # Only Base Sepolia is supported for auto-detection
-            console.print(f"[yellow]Warning:[/] Auto-detection only supports Base Sepolia (chain ID 84532), but chain ID {chain} was specified.")
+            # Unsupported chain for auto-detection
+            console.print(f"[yellow]Warning:[/] Auto-detection only supports Base Mainnet (8453) and Base Sepolia (84532), but chain ID {chain} was specified.")
             console.print("[dim]You'll need to enter the transaction hash manually.[/]")
             rpc_url = None
         

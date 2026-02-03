@@ -1466,37 +1466,32 @@ def test_prove_lock_eip712_signature_without_lock_days(monkeypatch):
 
 def test_vault_pools_command(monkeypatch):
     """Test vault pools command."""
-    # Mock list_pools to return test data
-    def fake_list_pools():
-        return {
-            "BTCUSD": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489",
-            "ETHUSD": "0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45",
-        }
+    # Mock fetch_pools to return test data (verifier API response format with camelCase keys)
+    def fake_fetch_pools():
+        return [
+            {
+                "name": "BTC/USD",
+                "poolId": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489",
+                "vaultAddress": "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69",
+                "chainId": 84532,
+                "network": "testnet",
+            },
+            {
+                "name": "ETH/USD",
+                "poolId": "0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45",
+                "vaultAddress": "0xdB74B44957A71c95406C316f8d3c5571FA588248",
+                "chainId": 84532,
+                "network": "testnet",
+            },
+        ]
 
-    def fake_pool_id_to_vault_address(pool_id: str):
-        vaults = {
-            "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489": "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69",
-            "0x0b43555ace6b39aae1b894097d0a9fc17f504c62fea598fa206cc6f5088e6e45": "0xdB74B44957A71c95406C316f8d3c5571FA588248",
-        }
-        return vaults.get(pool_id.lower())
-
-    def fake_pool_id_to_chain_id(pool_id: str):
-        return 84532
-
-    monkeypatch.setattr("cartha_cli.commands.pools.list_pools", fake_list_pools)
-    monkeypatch.setattr(
-        "cartha_cli.commands.pools.pool_id_to_vault_address",
-        fake_pool_id_to_vault_address,
-    )
-    monkeypatch.setattr(
-        "cartha_cli.commands.pools.pool_id_to_chain_id", fake_pool_id_to_chain_id
-    )
+    monkeypatch.setattr("cartha_cli.commands.pools.fetch_pools", fake_fetch_pools)
 
     result = runner.invoke(app, ["vault", "pools"])
     assert result.exit_code == 0
     assert "Available Pools" in result.stdout
-    assert "BTCUSD" in result.stdout
-    assert "ETHUSD" in result.stdout
+    assert "BTC/USD" in result.stdout
+    assert "ETH/USD" in result.stdout
     assert "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489" in result.stdout
     assert "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69" in result.stdout
     assert "84532" in result.stdout
@@ -1504,29 +1499,19 @@ def test_vault_pools_command(monkeypatch):
 
 def test_vault_pools_command_json(monkeypatch):
     """Test vault pools command with JSON output."""
-    # Mock list_pools to return test data
-    def fake_list_pools():
-        return {
-            "BTCUSD": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489",
-        }
+    # Mock fetch_pools to return test data (verifier API response format with camelCase keys)
+    def fake_fetch_pools():
+        return [
+            {
+                "name": "BTC/USD",
+                "poolId": "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489",
+                "vaultAddress": "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69",
+                "chainId": 84532,
+                "network": "testnet",
+            },
+        ]
 
-    def fake_pool_id_to_vault_address(pool_id: str):
-        vaults = {
-            "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489": "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69",
-        }
-        return vaults.get(pool_id.lower())
-
-    def fake_pool_id_to_chain_id(pool_id: str):
-        return 84532
-
-    monkeypatch.setattr("cartha_cli.commands.pools.list_pools", fake_list_pools)
-    monkeypatch.setattr(
-        "cartha_cli.commands.pools.pool_id_to_vault_address",
-        fake_pool_id_to_vault_address,
-    )
-    monkeypatch.setattr(
-        "cartha_cli.commands.pools.pool_id_to_chain_id", fake_pool_id_to_chain_id
-    )
+    monkeypatch.setattr("cartha_cli.commands.pools.fetch_pools", fake_fetch_pools)
 
     result = runner.invoke(app, ["vault", "pools", "--json"])
     assert result.exit_code == 0
@@ -1535,10 +1520,11 @@ def test_vault_pools_command_json(monkeypatch):
     json_end = stdout.rfind("]")
     payload = json.loads(stdout[json_start : json_end + 1])
     assert len(payload) == 1
-    assert payload[0]["name"] == "BTCUSD"
-    assert payload[0]["pool_id"] == "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489"
-    assert payload[0]["vault_address"] == "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69"
-    assert payload[0]["chain_id"] == 84532
+    # JSON output uses camelCase keys from verifier response
+    assert payload[0]["name"] == "BTC/USD"
+    assert payload[0]["poolId"] == "0xee62665949c883f9e0f6f002eac32e00bd59dfe6c34e92a91c37d6a8322d6489"
+    assert payload[0]["vaultAddress"] == "0x471D86764B7F99b894ee38FcD3cEFF6EAB321b69"
+    assert payload[0]["chainId"] == 84532
 
 
 def test_miner_status_with_refresh_already_verified(monkeypatch):

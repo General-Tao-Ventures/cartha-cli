@@ -238,7 +238,7 @@ wheels = [
 
 [[package]]
 name = "cartha-cli"
-version = "0.1.0"
+version = "1.0.8"
 source = { editable = "." }
 dependencies = [
     { name = "bittensor" },
