@@ -13,7 +13,7 @@ from pydantic_settings import BaseSettings
 # Network to verifier URL mapping
 NETWORK_VERIFIER_MAP = {
     "test": "https://cartha-verifier-826542474079.us-central1.run.app",
-    "finney": "https://cartha-verifier-193291340038.us-central1.run.app",
+    "finney": "https://api.cartha.finance",
 }
 
 
@@ -37,12 +37,12 @@ def get_verifier_url_for_network(network: str) -> str:
         return mapped_url
     
     # Default fallback to mainnet
-    return "https://cartha-verifier-193291340038.us-central1.run.app"
+    return "https://api.cartha.finance"
 
 
 class Settings(BaseSettings):
     verifier_url: str = Field(
-        "https://cartha-verifier-193291340038.us-central1.run.app", alias="CARTHA_VERIFIER_URL"
+        "https://api.cartha.finance", alias="CARTHA_VERIFIER_URL"
     )
     network: str = Field("finney", alias="CARTHA_NETWORK")
     netuid: int = Field(35, alias="CARTHA_NETUID")
