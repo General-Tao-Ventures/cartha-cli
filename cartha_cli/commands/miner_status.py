@@ -9,6 +9,7 @@ from typing import Any
 import bittensor as bt
 import typer
 from rich.json import JSON
+from rich.panel import Panel
 from rich.status import Status
 from rich.table import Table
 
@@ -34,6 +35,11 @@ from .shared_options import (
     tx_hash_option,
     refresh_option,
 )
+
+# Minimum total portfolio required to receive score/rewards (100k USDC)
+# Miners below this threshold will receive score=0 and no rewards
+# Reference: cartha-validator config.py min_total_assets_usdc
+MIN_PORTFOLIO_THRESHOLD_USDC = 100_000.0
 
 # Note: CLI does NOT convert pool_id to pool_name - verifier handles that
 # CLI just displays the pool_name from verifier response (capitalized)
@@ -313,6 +319,22 @@ def miner_status(
     sanitized.pop("pwd", None)
 
     if json_output:
+        # Add total portfolio and warning to JSON output
+        # Handle None values by defaulting to 0.0
+        total_verified_usdc = sanitized.get("verified_lock_amount_usdc") or 0.0
+        total_active_usdc = sanitized.get("active_lock_amount_usdc") or 0.0
+        total_portfolio_usdc = total_active_usdc if total_active_usdc > 0 else total_verified_usdc
+        
+        # Calculate from pools if API didn't provide totals
+        if total_portfolio_usdc == 0:
+            pools = sanitized.get("pools", [])
+            if pools:
+                total_portfolio_usdc = sum(pool.get("amount_usdc", 0) for pool in pools)
+        
+        sanitized["total_portfolio_usdc"] = total_portfolio_usdc
+        sanitized["min_portfolio_threshold_usdc"] = MIN_PORTFOLIO_THRESHOLD_USDC
+        sanitized["below_min_threshold"] = total_portfolio_usdc < MIN_PORTFOLIO_THRESHOLD_USDC
+        
         console.print(JSON.from_data(sanitized))
         return
 
@@ -480,6 +502,53 @@ def miner_status(
                     )
 
             console.print(pool_table)
+
+        # Calculate and display total portfolio
+        console.print()
+        console.print("[bold cyan]━━━ Total Portfolio ━━━[/]")
+        
+        # Get total amounts from API response (sum of all pools)
+        # Use verified_lock_amount_usdc for upcoming epoch, or active_lock_amount_usdc for current
+        # Handle None values by defaulting to 0.0
+        total_verified_usdc = sanitized.get("verified_lock_amount_usdc") or 0.0
+        total_active_usdc = sanitized.get("active_lock_amount_usdc") or 0.0
+        
+        # Use the larger of verified or active as the "scoring" total
+        # If active exists, that's what's currently being scored
+        # If only verified, that's what will be scored in next epoch
+        total_portfolio_usdc = total_active_usdc if total_active_usdc > 0 else total_verified_usdc
+        
+        # Also calculate from pools if API didn't provide totals
+        if total_portfolio_usdc == 0 and pools:
+            total_portfolio_usdc = sum(pool.get("amount_usdc", 0) for pool in pools)
+        
+        # Display total portfolio
+        portfolio_table = Table(show_header=False, box=None, padding=(0, 2))
+        portfolio_table.add_column("Label", style="cyan")
+        portfolio_table.add_column("Value", style="bold")
+        
+        if total_active_usdc > 0:
+            portfolio_table.add_row("Active Portfolio (Current Epoch)", f"${total_active_usdc:,.2f} USDC")
+        if total_verified_usdc > 0 and total_verified_usdc != total_active_usdc:
+            portfolio_table.add_row("Verified Portfolio (Next Epoch)", f"${total_verified_usdc:,.2f} USDC")
+        if total_portfolio_usdc == 0:
+            portfolio_table.add_row("Total Portfolio", "[dim]$0.00 USDC[/]")
+        
+        console.print(portfolio_table)
+        
+        # Warning if total portfolio is under 100k USDC threshold
+        if total_portfolio_usdc < MIN_PORTFOLIO_THRESHOLD_USDC:
+            console.print()
+            warning_msg = (
+                f"[bold red]⚠ MINIMUM THRESHOLD WARNING[/]\n\n"
+                f"Your total portfolio is [bold]{total_portfolio_usdc:,.2f} USDC[/], "
+                f"which is below the [bold]100,000 USDC[/] minimum threshold.\n\n"
+                f"[yellow]Miners with less than 100k USDC total locked will receive [bold]score=0[/] "
+                f"and [bold]no rewards[/] from validators.[/]\n\n"
+                f"To receive rewards, you must lock at least [bold]100,000 USDC[/] total across all pools.\n"
+                f"Use [cyan]https://cartha.finance[/] to top up or add new positions."
+            )
+            console.print(Panel(warning_msg, title="[bold red]Action Required[/]", border_style="red"))
 
         # Link to web interface
         console.print()
